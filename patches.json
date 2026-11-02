@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "platform": "windows",
+  "patches": [
+    {
+      "key": "edgeToEdge",
+      "order": 10,
+      "title": "Edge-to-edge window",
+      "detail": "Remove the window's frame border so the page meets the window's edges.",
+      "defaultOn": true,
+      "supported": true,
+      "mechanism": "border"
+    },
+    {
+      "key": "squareSidebarCorners",
+      "order": 20,
+      "title": "Square window corners",
+      "detail": "Square the window's corners instead of the rounded corners Windows 11 draws.",
+      "defaultOn": true,
+      "requires": "edgeToEdge",
+      "supported": true,
+      "mechanism": "corners"
+    },
+    {
+      "key": "hideToolbar",
+      "order": 30,
+      "title": "Hide toolbar",
+      "detail": "Not available on Windows. Dia's toolbar is compiled XAML inside a detached content island, and Windows gives no supported way to reach it from outside.",
+      "supported": false
+    },
+    {
+      "key": "revealToolbarOnHover",
+      "order": 40,
+      "title": "Reveal toolbar on hover",
+      "detail": "Not available on Windows, because it builds on Hide toolbar.",
+      "requires": "hideToolbar",
+      "supported": false
+    },
+    {
+      "key": "showToolbarWithSidebar",
+      "order": 45,
+      "title": "Show toolbar with the sidebar",
+      "detail": "Not available on Windows, because it builds on Hide toolbar.",
+      "requires": "hideToolbar",
+      "supported": false
+    },
+    {
+      "key": "showToolbarOnNewTab",
+      "order": 47,
+      "title": "Show toolbar on new tab pages",
+      "detail": "Not available on Windows, because it builds on Hide toolbar.",
+      "requires": "hideToolbar",
+      "supported": false
+    },
+    {
+      "key": "showAddressField",
+      "order": 48,
+      "title": "Always show address field",
+      "detail": "Not available on Windows. The address field is compiled XAML with no reachable runtime tree.",
+      "disabledBy": "hideToolbar",
+      "supported": false
+    },
+    {
+      "key": "hideSidebarButton",
+      "order": 50,
+      "title": "Hide sidebar button",
+      "detail": "Not available on Windows. The sidebar toggle is a XAML element in Dia's navigation bar, which can't be reached at runtime.",
+      "disabledBy": "hideToolbar",
+      "supported": false
+    },
+    {
+      "key": "hideChatButton",
+      "order": 60,
+      "title": "Hide Chat button",
+      "detail": "Not available on Windows. The Chat button is a XAML element in Dia's navigation bar, which can't be reached at runtime.",
+      "disabledBy": "hideToolbar",
+      "supported": false
+    },
+    {
+      "key": "hideChatsButton",
+      "order": 70,
+      "title": "Hide Chats button",
+      "detail": "Not available on Windows. The Chats button is drawn by Dia's own XAML sidebar.",
+      "supported": false
+    },
+    {
+      "key": "hideRecentTabsButton",
+      "order": 80,
+      "title": "Hide recent tabs button",
+      "detail": "Not available on Windows. The recent tabs button is drawn by Dia's own XAML sidebar.",
+      "supported": false
+    },
+    {
+      "key": "keepWindowsActive",
+      "order": 90,
+      "title": "Keep the display awake",
+      "detail": "Stop the screen from sleeping while Dia is open. This is the Windows adaptation of the macOS tweak, which kept an unfocused window looking active.",
+      "supported": true,
+      "mechanism": "awake"
+    },
+    {
+      "key": "passkeys",
+      "order": 100,
+      "title": "Allow iCloud passkeys",
+      "detail": "Not available on Windows. It relays passkey requests to Apple Passwords, which only exists on Apple platforms. Windows uses Windows Hello instead.",
+      "supported": false
+    },
+    {
+      "key": "icloudPasswords",
+      "order": 101,
+      "title": "Allow iCloud Passwords",
+      "detail": "Not available on Windows. It bridges to Apple's iCloud Passwords extension and native messaging host, which are macOS-only.",
+      "supported": false
+    }
+  ]
+}
