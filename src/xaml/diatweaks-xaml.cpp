@@ -1209,7 +1209,7 @@ static bool CheckIsNewTabInternal() {
         }
     }
 
-    // 2. Scan g_nodes for CardCanvas or newTabPage (only on initial load or if cache was cleared)
+    // 2. Scan g_nodes for newTabPage (only on initial load or if cache was cleared)
     static uint64_t s_lastFullScanTick = 0;
     uint64_t now = GetTickCount64();
     if (!g_treeDirty.load() && (now - s_lastFullScanTick < 2000)) {
@@ -1219,27 +1219,21 @@ static bool CheckIsNewTabInternal() {
 
     std::lock_guard<std::recursive_mutex> lock(g_mx);
     for (const auto& [handle, node] : g_nodes) {
-        if (node.name == L"CardCanvas" || node.type == L"Microsoft.UI.Xaml.Controls.Grid") {
+        if (node.type == L"Microsoft.UI.Xaml.Controls.Grid") {
             Inspectable obj{nullptr};
             if (GetObject(handle, obj)) {
                 if (auto fe = obj.try_as<mux::FrameworkElement>()) {
-                    if (node.name == L"CardCanvas") {
-                        if (fe.ActualWidth() >= 1 && fe.Visibility() == mux::Visibility::Visible && ShownOnScreen(fe)) {
-                            return true;
-                        }
-                    } else {
-                        try {
-                            std::wstring autoName(muxa::AutomationProperties::GetName(fe));
-                            if (autoName == L"newTabPage") {
-                                if (auto g = fe.try_as<muxc::Grid>()) {
-                                    t_activeNewTabPage = winrt::make_weak(g);
-                                }
-                                if (fe.ActualWidth() >= 1 && fe.Visibility() == mux::Visibility::Visible && ShownOnScreen(fe)) {
-                                    return true;
-                                }
+                    try {
+                        std::wstring autoName(muxa::AutomationProperties::GetName(fe));
+                        if (autoName == L"newTabPage") {
+                            if (auto g = fe.try_as<muxc::Grid>()) {
+                                t_activeNewTabPage = winrt::make_weak(g);
                             }
-                        } catch (...) {}
-                    }
+                            if (fe.ActualWidth() >= 1 && fe.Visibility() == mux::Visibility::Visible && ShownOnScreen(fe)) {
+                                return true;
+                            }
+                        }
+                    } catch (...) {}
                 }
             }
         }
@@ -1298,12 +1292,12 @@ static void UpdateHiddenToolbar();
 static DWORD WINAPI HoverWatcher(LPVOID) {
     bool last = false;
     for (;;) {
-        if (!g_watchHover.load() || !g_pingWnd.load()) {
+        if (!g_watchHover.load() || !g_pingWnd.load() || !g_hideToolbar.load() || !g_revealToolbarOnHover.load()) {
             if (last) {
                 last = false;
                 PostMessageW(g_pingWnd.load(), WM_DT_HOVER, 0, 0);
             }
-            Sleep(60);
+            Sleep(200);
             continue;
         }
         bool now = PointerAtTop(g_hoverThread.load(), last);
@@ -1311,7 +1305,7 @@ static DWORD WINAPI HoverWatcher(LPVOID) {
             last = now;
             PostMessageW(g_pingWnd.load(), WM_DT_HOVER, now ? 1 : 0, 0);
         }
-        Sleep(8);
+        Sleep(25);
     }
 }
 
@@ -1507,6 +1501,12 @@ IInspectable* Engine_Object(InstanceHandle h) {
     IInspectable* out = nullptr;
     if (FAILED(g_diag->GetIInspectableFromHandle(h, &out))) return nullptr;
     return out;
+}
+
+static std::atomic<int> g_menuPresenterCount{0};
+
+bool Engine_HasOpenMenu() {
+    return g_menuPresenterCount.load() > 0;
 }
 
 std::vector<InstanceHandle> Engine_FindNodes(const std::wstring& name) {
@@ -2841,25 +2841,63 @@ struct NewTabState {
 };
 static thread_local std::vector<NewTabState> t_newTabStates;
 
-static void MakeSubtreeClear(const mux::DependencyObject& root) {
-    if (!root) return;
-    muxm::SolidColorBrush clearBrush{winrt::Windows::UI::Color{0, 0, 0, 0}};
+static void MakeSubtreeClear(const mux::DependencyObject& root, int depth = 0) {
+    if (!root || depth > 12) return;
+    static muxm::SolidColorBrush s_clearBrush{winrt::Windows::UI::Color{0, 0, 0, 0}};
     if (auto p = root.try_as<muxc::Panel>()) {
-        if (p.Background() != clearBrush && p.Background() != nullptr) p.Background(clearBrush);
+        try {
+            if (p.Background() != s_clearBrush) p.Background(s_clearBrush);
+        } catch (...) {}
+    } else if (auto cp = root.try_as<muxc::ContentPresenter>()) {
+        try {
+            if (cp.Background() != s_clearBrush) cp.Background(s_clearBrush);
+        } catch (...) {}
     } else if (auto cc = root.try_as<muxc::ContentControl>()) {
-        if (cc.Background() != clearBrush && cc.Background() != nullptr) cc.Background(clearBrush);
+        try {
+            if (cc.Background() != s_clearBrush) cc.Background(s_clearBrush);
+        } catch (...) {}
     } else if (auto b = root.try_as<muxc::Border>()) {
-        std::wstring bName(b.Name());
-        if (bName != L"Background" && bName != L"BackgroundRect" && bName != L"BackgroundBorder") {
-            if (b.Background() != clearBrush && b.Background() != nullptr) b.Background(clearBrush);
-            if (b.BorderThickness().Top > 0 || b.BorderThickness().Bottom > 0) {
+        try {
+            std::wstring bName(b.Name());
+            if (bName != L"AssistantBar") {
+                if (b.Background() != s_clearBrush) b.Background(s_clearBrush);
+            }
+            if (bName == L"BottomSeparator" || b.BorderThickness().Top > 0 || b.BorderThickness().Bottom > 0) {
                 b.BorderThickness(mux::Thickness{0, 0, 0, 0});
             }
-        }
+        } catch (...) {}
+    } else if (auto c = root.try_as<muxc::Control>()) {
+        try {
+            if (c.Background() != s_clearBrush) c.Background(s_clearBrush);
+        } catch (...) {}
     }
     int count = muxm::VisualTreeHelper::GetChildrenCount(root);
     for (int i = 0; i < count; ++i) {
-        MakeSubtreeClear(muxm::VisualTreeHelper::GetChild(root, i));
+        MakeSubtreeClear(muxm::VisualTreeHelper::GetChild(root, i), depth + 1);
+    }
+}
+
+static void RestoreSubtree(const mux::DependencyObject& root, int depth = 0) {
+    if (!root || depth > 12) return;
+    if (auto p = root.try_as<muxc::Panel>()) {
+        try { p.Background(nullptr); } catch (...) {}
+    } else if (auto cp = root.try_as<muxc::ContentPresenter>()) {
+        try { cp.Background(nullptr); } catch (...) {}
+    } else if (auto cc = root.try_as<muxc::ContentControl>()) {
+        try { cc.Background(nullptr); } catch (...) {}
+    } else if (auto b = root.try_as<muxc::Border>()) {
+        try {
+            std::wstring bName(b.Name());
+            if (bName != L"AssistantBar") {
+                b.Background(nullptr);
+            }
+        } catch (...) {}
+    } else if (auto c = root.try_as<muxc::Control>()) {
+        try { c.Background(nullptr); } catch (...) {}
+    }
+    int count = muxm::VisualTreeHelper::GetChildrenCount(root);
+    for (int i = 0; i < count; ++i) {
+        RestoreSubtree(muxm::VisualTreeHelper::GetChild(root, i), depth + 1);
     }
 }
 
@@ -2908,13 +2946,13 @@ static void UpdateNewTabPainting() {
                 }
             }
             for (auto ch : FindNodes(L"NavigationChromeHost")) {
-                if (auto g = Obj<muxc::Grid>(ch)) g.Background(nullptr);
+                if (auto g = Obj<muxc::Grid>(ch)) RestoreSubtree(g);
             }
             for (auto ch : FindNodes(L"NavigationBarHost")) {
-                if (auto cc = Obj<muxc::ContentControl>(ch)) cc.Background(nullptr);
+                if (auto cc = Obj<muxc::ContentControl>(ch)) RestoreSubtree(cc);
             }
             for (auto ch : FindNodes(L"NavigationBarContent")) {
-                if (auto g = Obj<muxc::Grid>(ch)) g.Background(nullptr);
+                if (auto g = Obj<muxc::Grid>(ch)) RestoreSubtree(g);
             }
             for (auto ch : FindNodes(L"ContentHost")) {
                 if (auto cc = Obj<muxc::ContentControl>(ch)) cc.Background(nullptr);
@@ -3000,27 +3038,35 @@ static void UpdateNewTabPainting() {
         bool alreadyApplied = (st && st->hasApplied && st->appliedPaintingIndex == todayIndex &&
                               contentGroup && contentGroup.Background() == brush);
 
-        if (!alreadyApplied) {
-            // Ensure tab bar and content hosts are transparent so ContentGroup's wallpaper flows through seamlessly
-            for (auto ch : FindNodes(L"NavigationChromeHost")) {
-                if (auto g = Obj<muxc::Grid>(ch)) MakeSubtreeClear(g);
+        // Ensure tab bar and content hosts are transparent so ContentGroup's wallpaper flows through seamlessly
+        for (auto ch : FindNodes(L"NavigationChromeHost")) {
+            if (auto g = Obj<muxc::Grid>(ch)) {
+                MakeSubtreeClear(g);
+                try {
+                    mux::DependencyObject parent = muxm::VisualTreeHelper::GetParent(g);
+                    if (parent) {
+                        if (auto pg = parent.try_as<muxc::Panel>()) {
+                            if (pg.Background() != clearBrush && pg.Background() != nullptr) pg.Background(clearBrush);
+                        }
+                    }
+                } catch (...) {}
             }
-            for (auto ch : FindNodes(L"NavigationBarHost")) {
-                if (auto cc = Obj<muxc::ContentControl>(ch)) MakeSubtreeClear(cc);
+        }
+        for (auto ch : FindNodes(L"NavigationBarHost")) {
+            if (auto cc = Obj<muxc::ContentControl>(ch)) MakeSubtreeClear(cc);
+        }
+        for (auto ch : FindNodes(L"NavigationBarContent")) {
+            if (auto g = Obj<muxc::Grid>(ch)) MakeSubtreeClear(g);
+        }
+        for (auto ch : FindNodes(L"ContentHost")) {
+            if (auto cc = Obj<muxc::ContentControl>(ch)) {
+                if (cc.Background() != clearBrush) cc.Background(clearBrush);
             }
-            for (auto ch : FindNodes(L"NavigationBarContent")) {
-                if (auto g = Obj<muxc::Grid>(ch)) MakeSubtreeClear(g);
-            }
-            for (auto ch : FindNodes(L"ContentHost")) {
-                if (auto cc = Obj<muxc::ContentControl>(ch)) {
-                    if (cc.Background() != clearBrush && cc.Background() != nullptr) cc.Background(clearBrush);
-                }
-            }
-            for (auto bsHandle : FindNodes(L"BottomSeparator")) {
-                if (auto fe = Obj<mux::FrameworkElement>(bsHandle)) {
-                    if (fe.Visibility() != mux::Visibility::Collapsed) fe.Visibility(mux::Visibility::Collapsed);
-                    if (fe.Height() != 0) fe.Height(0);
-                }
+        }
+        for (auto bsHandle : FindNodes(L"BottomSeparator")) {
+            if (auto fe = Obj<mux::FrameworkElement>(bsHandle)) {
+                if (fe.Visibility() != mux::Visibility::Collapsed) fe.Visibility(mux::Visibility::Collapsed);
+                if (fe.Height() != 0) fe.Height(0);
             }
         }
 
@@ -4120,13 +4166,7 @@ static void EvaluateNode(const Target& target, DWORD thread) {
                     fe.Visibility(mux::Visibility::Visible);
                 }
                 if (transparentToolbar) {
-                    muxm::SolidColorBrush clearBrush{winrt::Windows::UI::Color{0, 0, 0, 0}};
-                    if (auto p = fe.try_as<muxc::Panel>()) {
-                        if (p.Background() != clearBrush) p.Background(clearBrush);
-                    }
-                    if (auto cc = fe.try_as<muxc::ContentControl>()) {
-                        if (cc.Background() != clearBrush) cc.Background(clearBrush);
-                    }
+                    MakeSubtreeClear(fe);
                 }
             }
         }
@@ -6658,6 +6698,9 @@ public:
         {
             std::lock_guard<std::recursive_mutex> lock(g_mx);
             if (mutation == Add) {
+                if (type == L"Microsoft.UI.Xaml.Controls.MenuFlyoutPresenter") {
+                    g_menuPresenterCount.fetch_add(1);
+                }
                 Node& node = g_nodes[element.Handle];
                 node.parent = relation.Parent;
                 node.childIndex = relation.ChildIndex;
@@ -6674,6 +6717,9 @@ public:
             } else {
                 auto it = g_nodes.find(element.Handle);
                 if (it != g_nodes.end()) {
+                    if (it->second.type == L"Microsoft.UI.Xaml.Controls.MenuFlyoutPresenter") {
+                        g_menuPresenterCount.fetch_sub(1);
+                    }
                     auto parent = g_nodes.find(it->second.parent);
                     if (parent != g_nodes.end()) {
                         auto& children = parent->second.children;

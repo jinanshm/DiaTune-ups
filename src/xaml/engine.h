@@ -47,6 +47,7 @@ std::wstring Engine_Type(InstanceHandle h);
 IInspectable* Engine_Object(InstanceHandle h);  // AddRef'd, or null
 // Every element with the given name, in the tree the caller is on.
 std::vector<InstanceHandle> Engine_FindNodes(const std::wstring& name);
+bool Engine_HasOpenMenu();
 // Dia changed a property that a tweak overrides; newText is Dia's new value as text.
 void Engine_OnDiaChanged(InstanceHandle h, const std::wstring& prop, const std::wstring& newText);
 

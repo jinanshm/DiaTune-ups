@@ -590,12 +590,20 @@ bool FocusedPageUrl(int port, const std::wstring& preferredTitle, std::wstring& 
                 return true;
             }
 
+            if (!urlLower.empty() &&
+                (urlLower.find(prefLower) != std::wstring::npos ||
+                 prefLower.find(urlLower) != std::wstring::npos)) {
+                url = target.url;
+                targetId = target.id;
+                return true;
+            }
+
             size_t p = urlLower.find(L"://");
             if (p != std::wstring::npos) {
                 std::wstring host = urlLower.substr(p + 3);
                 size_t sl = host.find(L'/');
                 if (sl != std::wstring::npos) host = host.substr(0, sl);
-                if (!host.empty() && prefLower.find(host) != std::wstring::npos) {
+                if (!host.empty() && (prefLower.find(host) != std::wstring::npos || host.find(prefLower) != std::wstring::npos)) {
                     url = target.url;
                     targetId = target.id;
                     return true;
@@ -604,11 +612,22 @@ bool FocusedPageUrl(int port, const std::wstring& preferredTitle, std::wstring& 
         }
     }
 
+    std::vector<const Target*> candidates;
+    for (const Target& target : targets) {
+        if (isCandidatePage(target)) candidates.push_back(&target);
+    }
+    if (candidates.size() == 1) {
+        url = candidates.front()->url;
+        targetId = candidates.front()->id;
+        return true;
+    }
+
     std::vector<const Target*> onScreen;
     const Target* focused = nullptr;
 
-    for (const Target& target : targets) {
-        if (!isCandidatePage(target) || target.websocketDebuggerUrl.empty()) continue;
+    for (const Target* tPtr : candidates) {
+        const Target& target = *tPtr;
+        if (target.websocketDebuggerUrl.empty()) continue;
 
         std::string result = SendCommand(
             target.websocketDebuggerUrl, "Runtime.evaluate",

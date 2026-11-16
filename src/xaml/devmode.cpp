@@ -398,25 +398,27 @@ std::wstring NormalizeUrl(const std::wstring& raw) {
 
 std::wstring GetAddressBarUrl() {
     std::wstring result;
-    for (auto handle : Engine_FindNodes(L"AddressRichEditBox")) {
-        IInspectable* raw = Engine_Object(handle);
-        if (!raw) continue;
-        Inspectable object{nullptr};
-        winrt::copy_from_abi(object, raw);
-        raw->Release();
+    for (const wchar_t* boxName : { L"QueryTextBox", L"AddressRichEditBox" }) {
+        for (auto handle : Engine_FindNodes(boxName)) {
+            IInspectable* raw = Engine_Object(handle);
+            if (!raw) continue;
+            Inspectable object{nullptr};
+            winrt::copy_from_abi(object, raw);
+            raw->Release();
 
-        if (auto reb = object.try_as<muxc::RichEditBox>()) {
-            try {
-                winrt::hstring text;
-                reb.Document().GetText(winrt::Microsoft::UI::Text::TextGetOptions::None, text);
-                std::wstring s(text);
-                while (!s.empty() && (s.back() == L'\r' || s.back() == L'\n' || s.back() == L' '))
-                    s.pop_back();
-                if (!s.empty() && s != L"Search or enter URL" && s != L"Type to search") {
-                    result = s;
-                    break;
-                }
-            } catch (...) {}
+            if (auto reb = object.try_as<muxc::RichEditBox>()) {
+                try {
+                    winrt::hstring text;
+                    reb.Document().GetText(winrt::Microsoft::UI::Text::TextGetOptions::None, text);
+                    std::wstring s(text);
+                    while (!s.empty() && (s.back() == L'\r' || s.back() == L'\n' || s.back() == L' '))
+                        s.pop_back();
+                    if (!s.empty() && s != L"Search or enter URL" && s != L"Type to search") {
+                        result = s;
+                        return result;
+                    }
+                } catch (...) {}
+            }
         }
     }
     return result;
@@ -446,10 +448,9 @@ bool IsNewTabPage() {
 bool TabInDevMode(const Page& page) {
     if (IsNewTabPage()) return false;
     if (page.origin.empty() || page.origin == L"active_tab") return false;
-    if (page.targetId == L"page") return false;
     std::lock_guard<std::mutex> lock(g_lock);
-    if (!page.targetId.empty() && g_disabledTabs.count(page.targetId)) return false;
-    if (!page.targetId.empty() && g_devTabs.count(page.targetId)) return true;
+    if (!page.targetId.empty() && page.targetId != L"page" && g_disabledTabs.count(page.targetId)) return false;
+    if (!page.targetId.empty() && page.targetId != L"page" && g_devTabs.count(page.targetId)) return true;
     if (g_sites.count(page.origin)) return true;
     if (g_localhost && IsLocalhost(page.origin)) return true;
     return false;
@@ -502,16 +503,16 @@ void ToggleCurrentTabDevMode() {
     {
         std::lock_guard<std::mutex> lock(g_lock);
         bool currentlyOn = false;
-        if (!page.targetId.empty() && g_disabledTabs.count(page.targetId)) {
+        if (!page.targetId.empty() && page.targetId != L"page" && g_disabledTabs.count(page.targetId)) {
             currentlyOn = false;
-        } else if (!page.targetId.empty() && g_devTabs.count(page.targetId)) {
+        } else if (!page.targetId.empty() && page.targetId != L"page" && g_devTabs.count(page.targetId)) {
             currentlyOn = true;
         } else if (g_sites.count(page.origin) || (g_localhost && IsLocalhost(page.origin))) {
             currentlyOn = true;
         }
 
         if (currentlyOn) {
-            if (!page.targetId.empty()) {
+            if (!page.targetId.empty() && page.targetId != L"page") {
                 g_devTabs.erase(page.targetId);
                 g_disabledTabs.insert(page.targetId);
             }
@@ -521,7 +522,7 @@ void ToggleCurrentTabDevMode() {
             }
             Log("developer mode: turned OFF for tab %ls (%ls)", page.targetId.c_str(), page.origin.c_str());
         } else {
-            if (!page.targetId.empty()) {
+            if (!page.targetId.empty() && page.targetId != L"page") {
                 g_disabledTabs.erase(page.targetId);
                 g_devTabs.insert(page.targetId);
             }
@@ -688,13 +689,15 @@ Page ReadPage(const Page& last) {
     }
 
     std::wstring activeTitle;
+    std::wstring activeUrl;
     {
         std::lock_guard<std::mutex> lock(g_lock);
         activeTitle = g_page.title;
+        activeUrl = g_page.url;
     }
-    if (activeTitle.empty()) {
-        activeTitle = GetSelectedTabTitle();
-    }
+    if (activeUrl.empty()) activeUrl = GetAddressBarUrl();
+    if (activeTitle.empty()) activeTitle = GetSelectedTabTitle();
+    if (!activeUrl.empty() && activeTitle.empty()) activeTitle = activeUrl;
     if (activeTitle == L"New Tab" || activeTitle == L"New tab") {
         page.url.clear();
         page.origin.clear();
@@ -711,13 +714,16 @@ Page ReadPage(const Page& last) {
     if (Cdp::FocusedPageUrl(port, activeTitle, url, targetId) && !url.empty()) {
         if (url.find(L"newtab") != std::wstring::npos ||
             url.find(L"about:blank") != std::wstring::npos) {
-            page.url.clear();
-            page.origin.clear();
-            page.socket.clear();
-            page.title.clear();
-            page.targetId.clear();
-            page.devTools = false;
-            return page;
+            if (activeTitle.empty() || activeTitle == L"New Tab" || activeTitle == L"New tab" || IsNewTabPage()) {
+                page.url.clear();
+                page.origin.clear();
+                page.socket.clear();
+                page.title.clear();
+                page.targetId.clear();
+                page.devTools = false;
+                return page;
+            }
+            return last;
         }
 
         page.url = url;
@@ -1143,6 +1149,7 @@ void ClearMarkOnRow(mux::UIElement row) {
 }
 
 void ClearMark() {
+    if (g_markShapes.empty() && !g_markedRow.get() && g_markedRowHandle == 0) return;
     try {
         std::vector<RowOnScreen> rows = SidebarRows();
         for (auto& row : rows) {
@@ -1170,14 +1177,14 @@ void MarkSidebarTab() {
     if (now - lastCheck < 250) return;
     lastCheck = now;
 
-    std::vector<RowOnScreen> rows = SidebarRows();
-    if (rows.empty()) {
+    bool activeInDev = ActiveTabInDevMode();
+    if (!activeInDev) {
         ClearMark();
         return;
     }
 
-    bool activeInDev = ActiveTabInDevMode();
-    if (!activeInDev) {
+    std::vector<RowOnScreen> rows = SidebarRows();
+    if (rows.empty()) {
         ClearMark();
         return;
     }
@@ -3113,6 +3120,7 @@ void ShowToolbar() {
 }
 
 void HideToolbar() {
+    if (!g_toolbar.get() && !g_toolbarPanel.get() && g_hiddenToolbarElements.empty() && !g_toolbarHost.get()) return;
     if (auto panel = g_toolbarPanel.get()) {
         for (int i = static_cast<int>(panel.Children().Size()) - 1; i >= 0; --i) {
             if (auto child = panel.Children().GetAt(i).try_as<mux::FrameworkElement>()) {
@@ -3212,7 +3220,7 @@ DWORD WINAPI WorkerThread(LPVOID) {
             g_page = page;
         }
 
-        for (int i = 0; i < 5 && !g_stopWorker; ++i) {
+        for (int i = 0; i < 15 && !g_stopWorker; ++i) {
             Sleep(100);
         }
     }
@@ -3291,22 +3299,17 @@ void Tick() {
         return;
     }
 
-    // Track active page on UI thread only when CDP is not active
-    int cdpPort = 0;
-    bool hasCdp = DevToolsPort(cdpPort) && cdpPort > 0;
-    if (!hasCdp) {
-        std::wstring tabTitle = GetSelectedTabTitle();
-        std::wstring addr = NormalizeUrl(GetAddressBarUrl());
-        if (!addr.empty() && addr.find(L"newtab") == std::wstring::npos) {
-            std::wstring origin = OriginOf(addr);
-            if (!origin.empty()) {
-                std::lock_guard<std::mutex> lock(g_lock);
-                if (g_page.origin != origin || g_page.url != addr) {
-                    g_page.url = addr;
-                    g_page.origin = origin;
-                    if (g_page.targetId.empty()) g_page.targetId = L"page";
-                    g_page.title = tabTitle;
-                }
+    std::wstring tabTitle = GetSelectedTabTitle();
+    std::wstring addr = NormalizeUrl(GetAddressBarUrl());
+    if (!addr.empty() && addr.find(L"newtab") == std::wstring::npos) {
+        std::wstring origin = OriginOf(addr);
+        if (!origin.empty()) {
+            std::lock_guard<std::mutex> lock(g_lock);
+            if (g_page.origin.empty() || g_page.origin != origin || g_page.url != addr) {
+                g_page.url = addr;
+                g_page.origin = origin;
+                if (g_page.targetId.empty()) g_page.targetId = L"page";
+                if (!tabTitle.empty()) g_page.title = tabTitle;
             }
         }
     }
