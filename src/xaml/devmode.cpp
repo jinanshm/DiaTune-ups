@@ -83,6 +83,8 @@ void HideToolbar();
 void UpdateToolbar();
 void MarkSidebarTab();
 std::wstring GetSelectedTabTitle();
+HWND GetDiaMainWindow();
+HWND FindChromiumChild(HWND parent);
 
 InstanceHandle TreeRoot(InstanceHandle handle) {
     InstanceHandle root = handle;
@@ -317,7 +319,12 @@ void LoadSites() {
         if (equals == std::string::npos) continue;
         std::string origin = line.substr(0, equals);
         std::string value = line.substr(equals + 1);
-        while (!value.empty() && (value.back() == '\r' || value.back() == ' ')) value.pop_back();
+
+        while (!origin.empty() && (origin.front() == ' ' || origin.front() == '\t')) origin.erase(origin.begin());
+        while (!origin.empty() && (origin.back() == '\r' || origin.back() == ' ' || origin.back() == '\t')) origin.pop_back();
+        while (!value.empty() && (value.front() == ' ' || value.front() == '\t')) value.erase(value.begin());
+        while (!value.empty() && (value.back() == '\r' || value.back() == ' ' || value.back() == '\t')) value.pop_back();
+
         if (value != "1" || origin.empty() || origin == "active_tab") continue;
         g_sites.insert(ToWide(origin));
     }
@@ -328,7 +335,14 @@ void SaveSites() {
     if (path.empty()) return;
 
     std::string text = "[sites]\r\n";
-    for (const std::wstring& site : g_sites) text += ToNarrow(site) + "=1\r\n";
+    for (const std::wstring& site : g_sites) {
+        std::wstring trimmed = site;
+        while (!trimmed.empty() && (trimmed.front() == L' ' || trimmed.front() == L'\t')) trimmed.erase(trimmed.begin());
+        while (!trimmed.empty() && (trimmed.back() == L'\r' || trimmed.back() == L' ' || trimmed.back() == L'\t')) trimmed.pop_back();
+        if (!trimmed.empty()) {
+            text += ToNarrow(trimmed) + "=1\r\n";
+        }
+    }
 
     HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
                               FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -437,12 +451,30 @@ std::wstring PageOrigin() {
 }
 
 bool IsNewTabPage() {
-    if (IsDiaNewTab()) return true;
     std::wstring title = GetSelectedTabTitle();
-    if (title == L"New Tab" || title == L"New tab") return true;
+    if (!title.empty() && title != L"New Tab" && title != L"New tab") {
+        return false;
+    }
     std::wstring addr = GetAddressBarUrl();
+    if (!addr.empty() && addr.find(L"newtab") == std::wstring::npos) {
+        return false;
+    }
+    if (title == L"New Tab" || title == L"New tab") return true;
     if (!addr.empty() && addr.find(L"newtab") != std::wstring::npos) return true;
-    return false;
+
+    // Fallback: check if Chromium render window is present and visible
+    HWND win = GetDiaMainWindow();
+    if (win) {
+        HWND chrom = FindChromiumChild(win);
+        if (chrom && IsWindowVisible(chrom)) {
+            RECT rc{};
+            GetClientRect(chrom, &rc);
+            if (rc.right - rc.left > 100 && rc.bottom - rc.top > 100) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 bool TabInDevMode(const Page& page) {
@@ -516,10 +548,18 @@ void ToggleCurrentTabDevMode() {
                 g_devTabs.erase(page.targetId);
                 g_disabledTabs.insert(page.targetId);
             }
-            if (g_sites.count(page.origin)) {
-                g_sites.erase(page.origin);
-                SaveSites();
+            g_sites.erase(page.origin);
+            for (auto it = g_sites.begin(); it != g_sites.end(); ) {
+                std::wstring s = *it;
+                while (!s.empty() && (s.back() == L' ' || s.back() == L'\t' || s.back() == L'\r')) s.pop_back();
+                while (!s.empty() && (s.front() == L' ' || s.front() == L'\t')) s.erase(s.begin());
+                if (s == page.origin) {
+                    it = g_sites.erase(it);
+                } else {
+                    ++it;
+                }
             }
+            SaveSites();
             Log("developer mode: turned OFF for tab %ls (%ls)", page.targetId.c_str(), page.origin.c_str());
         } else {
             if (!page.targetId.empty() && page.targetId != L"page") {
@@ -527,7 +567,10 @@ void ToggleCurrentTabDevMode() {
                 g_devTabs.insert(page.targetId);
             }
             if (!page.origin.empty() && page.origin != L"active_tab") {
-                g_sites.insert(page.origin);
+                std::wstring clean = page.origin;
+                while (!clean.empty() && (clean.back() == L' ' || clean.back() == L'\t' || clean.back() == L'\r')) clean.pop_back();
+                while (!clean.empty() && (clean.front() == L' ' || clean.front() == L'\t')) clean.erase(clean.begin());
+                g_sites.insert(clean);
                 SaveSites();
             }
             Log("developer mode: turned ON for tab %ls (%ls)", page.targetId.c_str(), page.origin.c_str());
@@ -3320,4 +3363,12 @@ void Tick() {
     UpdateToolbar();
 }
 
+bool IsDiaNewTabImpl() {
+    return IsNewTabPage();
+}
+
 }  // namespace DevMode
+
+bool IsDiaNewTab() {
+    return DevMode::IsDiaNewTabImpl();
+}

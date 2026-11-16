@@ -19,6 +19,7 @@
 #include <xamlOM.h>
 
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Numerics.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.UI.h>
@@ -481,6 +482,7 @@ struct TweakCfg {
     int newTabPaintingTint = 67;
     std::wstring sidebarGrainMaterial = L"sand";
     std::wstring windowMaterial = L"mica";
+    std::wstring hideToolbarMode = L"overlay";
     std::wstring preset = L"custom";
     std::wstring peekTrigger = L"shift";
     std::wstring peekAnimation = L"genie";
@@ -606,6 +608,10 @@ static void ReadConfig() {
     wchar_t winMat[64]{};
     GetPrivateProfileStringW(L"tweaks", L"windowMaterial", L"mica", winMat, _countof(winMat), g_configPath);
     g_cfg.windowMaterial = winMat;
+
+    wchar_t tbMode[32]{};
+    GetPrivateProfileStringW(L"tweaks", L"hideToolbarMode", L"overlay", tbMode, _countof(tbMode), g_configPath);
+    g_cfg.hideToolbarMode = tbMode;
 
     wchar_t ptBuf[64]{};
     GetPrivateProfileStringW(L"tweaks", L"peekTrigger", L"shift", ptBuf, _countof(ptBuf), g_configPath);
@@ -1193,70 +1199,18 @@ static thread_local winrt::weak_ref<muxc::Grid> t_activeNewTabPage;
 static thread_local bool t_isNewTabCached = false;
 static thread_local uint64_t t_lastNewTabCheckTick = 0;
 
-static bool CheckIsNewTabInternal() {
-    // 1. Fast check: is cached newTabPage still alive?
-    if (auto grid = t_activeNewTabPage.get()) {
-        try {
-            if (grid.Visibility() == mux::Visibility::Visible &&
-                grid.ActualWidth() >= 1 &&
-                ShownOnScreen(grid)) {
-                return true;
-            }
-            // Page is alive but hidden: user is on a website tab!
-            return false;
-        } catch (...) {
-            t_activeNewTabPage = nullptr;
-        }
-    }
-
-    // 2. Scan g_nodes for newTabPage (only on initial load or if cache was cleared)
-    static uint64_t s_lastFullScanTick = 0;
-    uint64_t now = GetTickCount64();
-    if (!g_treeDirty.load() && (now - s_lastFullScanTick < 2000)) {
-        return false;
-    }
-    s_lastFullScanTick = now;
-
-    std::lock_guard<std::recursive_mutex> lock(g_mx);
-    for (const auto& [handle, node] : g_nodes) {
-        if (node.type == L"Microsoft.UI.Xaml.Controls.Grid") {
-            Inspectable obj{nullptr};
-            if (GetObject(handle, obj)) {
-                if (auto fe = obj.try_as<mux::FrameworkElement>()) {
-                    try {
-                        std::wstring autoName(muxa::AutomationProperties::GetName(fe));
-                        if (autoName == L"newTabPage") {
-                            if (auto g = fe.try_as<muxc::Grid>()) {
-                                t_activeNewTabPage = winrt::make_weak(g);
-                            }
-                            if (fe.ActualWidth() >= 1 && fe.Visibility() == mux::Visibility::Visible && ShownOnScreen(fe)) {
-                                return true;
-                            }
-                        }
-                    } catch (...) {}
-                }
-            }
-        }
-    }
-    return false;
-}
-
 static void InvalidateNewTabCache() {
     t_lastNewTabCheckTick = 0;
 }
 
 static bool IsNewTab() {
     uint64_t now = GetTickCount64();
-    if (now - t_lastNewTabCheckTick < 250) {
+    if (now - t_lastNewTabCheckTick < 100) {
         return t_isNewTabCached;
     }
     t_lastNewTabCheckTick = now;
-    t_isNewTabCached = CheckIsNewTabInternal();
+    t_isNewTabCached = IsDiaNewTab();
     return t_isNewTabCached;
-}
-
-bool IsDiaNewTab() {
-    return IsNewTab();
 }
 
 static bool PointerAtTop(DWORD uiThread, bool shown) {
@@ -2133,6 +2087,9 @@ struct BarAnim {
     double from = 0, to = 0;
     double start = 0;
     bool animating = false, managed = false;
+    bool overlay = false;  // "Over the page": page stays put, only the toolbar slides
+    // Toolbar/containers up to the group, raised above sibling layers while over the page.
+    std::vector<std::pair<winrt::weak_ref<mux::UIElement>, int>> raised;
 };
 
 static thread_local std::map<InstanceHandle, BarAnim> t_bars;
@@ -2154,9 +2111,47 @@ static double BarHeight(BarAnim& a) {
     return h > 1 ? h : 40;
 }
 
+static bool OverlayToolbar() { return g_cfg.hideToolbarMode == L"overlay"; }
+static void UpdatePageClips();
+
+static void RaiseBar(BarAnim& a, bool raise) {
+    if (!raise) {
+        for (auto& [w, z] : a.raised)
+            if (auto el = w.get()) muxc::Canvas::SetZIndex(el, z);
+        a.raised.clear();
+        return;
+    }
+    if (!a.raised.empty()) return;
+    auto g = a.group.get();
+    auto b = a.bar.get();
+    if (!g || !b) return;
+    for (mux::DependencyObject d = b; d && d != g;) {
+        auto parent = muxm::VisualTreeHelper::GetParent(d);
+        if (parent.try_as<muxc::Panel>())
+            if (auto el = d.try_as<mux::UIElement>()) {
+                a.raised.push_back({winrt::make_weak(el), muxc::Canvas::GetZIndex(el)});
+                muxc::Canvas::SetZIndex(el, 1000);
+            }
+        d = parent;
+    }
+}
+
 static void ApplyOffset(BarAnim& a, double h, bool settled) {
     auto g = a.group.get();
     if (!g) return;
+    if (a.overlay) {
+        // The page container stays a toolbar height higher than Dia laid it out; only
+        // the toolbar moves, sliding back down over the top of the page.
+        mux::Thickness m{a.saved.Left, a.saved.Top - h, a.saved.Right, a.saved.Bottom};
+        auto cur = g.Margin();
+        if (cur.Left != m.Left || cur.Top != m.Top || cur.Right != m.Right || cur.Bottom != m.Bottom) g.Margin(m);
+        if (auto b = a.bar.get()) {
+            float y = (float)(a.offset + h);
+            if (b.Translation().y != y) b.Translation({0.0f, y, 0.0f});
+        }
+        RaiseBar(a, true);
+        return;
+    }
     double top = a.offset;
     bool constantHeight = !settled || IsNewTab();
     double bottom = constantHeight ? -(h + top) : 0;
@@ -2183,6 +2178,7 @@ static void OnRendering(winrt::Windows::Foundation::IInspectable const&, winrt::
         ApplyOffset(a, h, false);
         any = true;
     }
+    UpdatePageClips();  // the cut-away top of the page follows the sliding toolbar
     if (!any) {
         t_sliding = false;
         if (t_renderHooked) {
@@ -2203,6 +2199,98 @@ static void EnsureRendering(bool on) {
     }
 }
 
+// ---- Over the page: cut the top of each Chromium page window away under the
+// toolbar. Web pages are separate HWNDs above Dia's XAML, so the toolbar can
+// only show over them by taking that strip out of the page window's region.
+static thread_local std::map<HWND, std::vector<RECT>> t_pageClips;
+
+static void UnclipPage(HWND w) {
+    if (IsWindow(w)) SetWindowRgn(w, nullptr, TRUE);
+}
+
+static void UpdatePageClips() {
+    std::map<HWND, std::vector<RECT>> bars;
+    for (auto& [hnd, a] : t_bars) {
+        if (!a.managed || !a.overlay) continue;
+        auto g = a.group.get();
+        auto b = a.bar.get();
+        if (!g || !b) continue;
+        auto root = g.XamlRoot();
+        if (!root) continue;
+        double h = BarHeight(a);
+        double shown = a.offset + h;  // how much of the toolbar is in the window
+        if (shown < 0.5) continue;
+        HWND top = TopWindowFor(root);
+        if (!top) continue;
+        double sc = root.RasterizationScale();
+        auto at = g.TransformToVisual(nullptr).TransformPoint({0, 0});
+        double barLeft = b.TransformToVisual(g).TransformPoint({0, 0}).X + at.X;
+        POINT origin{0, 0};
+        ClientToScreen(top, &origin);
+        RECT r{origin.x + (LONG)std::floor(barLeft * sc), origin.y + (LONG)std::floor((at.Y + h) * sc),
+               origin.x + (LONG)std::ceil((barLeft + b.ActualWidth()) * sc),
+               origin.y + (LONG)std::ceil((at.Y + h + shown) * sc)};
+        if (r.right > r.left && r.bottom > r.top) bars[top].push_back(r);
+    }
+
+    std::map<HWND, std::vector<RECT>> want;
+    for (auto& [top, rects] : bars) {
+        struct Ctx {
+            HWND top;
+            const std::vector<RECT>* rects;
+            std::map<HWND, std::vector<RECT>>* want;
+        } ctx{top, &rects, &want};
+        EnumChildWindows(top, [](HWND w, LPARAM l) -> BOOL {
+            auto& c = *reinterpret_cast<Ctx*>(l);
+            if (GetParent(w) != c.top) return TRUE;
+            wchar_t cls[64];
+            GetClassNameW(w, cls, 64);
+            RECT wr, inter;
+            if (wcscmp(cls, L"Chrome_WidgetWin_1") || !IsWindowVisible(w) || !GetWindowRect(w, &wr)) return TRUE;
+            std::vector<RECT> cut;
+            for (auto& r : *c.rects)
+                if (IntersectRect(&inter, &r, &wr))
+                    cut.push_back({inter.left - wr.left, inter.top - wr.top, inter.right - wr.left, inter.bottom - wr.top});
+            if (!cut.empty()) (*c.want)[w] = cut;
+            return TRUE;
+        }, (LPARAM)&ctx);
+    }
+
+    auto same = [](const std::vector<RECT>& x, const std::vector<RECT>& y) {
+        if (x.size() != y.size()) return false;
+        for (size_t i = 0; i < x.size(); i++)
+            if (!EqualRect(&x[i], &y[i])) return false;
+        return true;
+    };
+    for (auto it = t_pageClips.begin(); it != t_pageClips.end();) {
+        if (!want.count(it->first)) {
+            UnclipPage(it->first);
+            it = t_pageClips.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto& [w, cut] : want) {
+        auto old = t_pageClips.find(w);
+        if (old != t_pageClips.end() && same(old->second, cut)) continue;
+        if (old == t_pageClips.end()) {
+            // Leave windows someone else shaped (Dia, Peek) alone.
+            HRGN cur = CreateRectRgn(0, 0, 0, 0);
+            bool has = GetWindowRgn(w, cur) != ERROR;
+            DeleteObject(cur);
+            if (has) continue;
+        }
+        HRGN rgn = CreateRectRgn(-32768, -32768, 32767, 32767);
+        for (auto& r : cut) {
+            HRGN hole = CreateRectRgnIndirect(&r);
+            CombineRgn(rgn, rgn, hole, RGN_DIFF);
+            DeleteObject(hole);
+        }
+        SetWindowRgn(w, rgn, TRUE);  // the system owns `rgn` now
+        t_pageClips[w] = cut;
+    }
+}
+
 static bool FocusWithin(const mux::FrameworkElement& bar) {
     try {
         auto root = bar.XamlRoot();
@@ -2214,6 +2302,131 @@ static bool FocusWithin(const mux::FrameworkElement& bar) {
             if (f == barDo) return true;
     } catch (...) {}
     return false;
+}
+
+// Dia lays an invisible caption-input window over the toolbar that turns presses
+// there into window drags. With the toolbar hidden the page sits under it, so
+// trim that sink down to the sidebar part while the toolbar is out.
+struct SinkState {
+    HWND sink = nullptr;
+    HRGN dia = nullptr;  // Dia's own shape (owned copy), or null
+    bool diaHadRegion = false;
+    HRGN mine = nullptr;  // the shape we last applied
+};
+static thread_local std::map<HWND, SinkState> t_sinks;
+
+static HWND FindSink(HWND top) {
+    struct Ctx { HWND found = nullptr; } ctx;
+    EnumChildWindows(top, [](HWND h, LPARAM lp) -> BOOL {
+        wchar_t cls[64];
+        GetClassNameW(h, cls, 64);
+        if (wcscmp(cls, L"BoostBrowser.WindowCaptionInputSink") == 0 ||
+            wcscmp(cls, L"BoostBrowser.NativeCaptionInputWindow") == 0) {
+            reinterpret_cast<Ctx*>(lp)->found = h;
+            return FALSE;
+        }
+        return TRUE;
+    }, (LPARAM)&ctx);
+    return ctx.found;
+}
+
+static HRGN CopyRgn(HRGN r) {
+    if (!r) return nullptr;
+    HRGN c = CreateRectRgn(0, 0, 0, 0);
+    CombineRgn(c, r, nullptr, RGN_COPY);
+    return c;
+}
+
+static void RestoreSink(SinkState& st) {
+    if (!st.sink || !IsWindow(st.sink)) return;
+    SetWindowRgn(st.sink, st.diaHadRegion ? CopyRgn(st.dia) : nullptr, TRUE);
+    if (st.mine) DeleteObject(st.mine), st.mine = nullptr;
+}
+
+// pageLeftPx: where the page starts, in the top-level window's client pixels.
+static void TrimSink(HWND top, bool trim, int pageLeftPx) {
+    auto& st = t_sinks[top];
+    if (!st.sink || !IsWindow(st.sink)) {
+        if (st.mine) DeleteObject(st.mine);
+        if (st.dia) DeleteObject(st.dia);
+        st = SinkState{};
+        st.sink = FindSink(top);
+    }
+    if (!st.sink) return;
+    if (!trim) {
+        if (st.mine) RestoreSink(st);
+        return;
+    }
+    HRGN cur = CreateRectRgn(0, 0, 0, 0);
+    bool has = GetWindowRgn(st.sink, cur) != ERROR;
+    if (!st.mine || !has || !EqualRgn(cur, st.mine)) {
+        if (st.dia) DeleteObject(st.dia);
+        st.dia = has ? CopyRgn(cur) : nullptr;
+        st.diaHadRegion = has;
+        RECT wr;
+        GetWindowRect(st.sink, &wr);
+        POINT origin{0, 0};
+        ClientToScreen(top, &origin);
+        int keepW = pageLeftPx - (wr.left - origin.x);
+        HRGN want = CreateRectRgn(0, 0, (std::max)(0, keepW), wr.bottom - wr.top);
+        if (has) CombineRgn(want, want, cur, RGN_AND);
+        if (st.mine) DeleteObject(st.mine);
+        st.mine = CopyRgn(want);
+        SetWindowRgn(st.sink, want, TRUE);
+    }
+    DeleteObject(cur);
+}
+
+static void UpdateSinkTrim() {
+    std::map<HWND, int> tops;
+    for (auto& [h, a] : t_bars) {
+        auto g = a.group.get();
+        if (!g || !a.managed || a.to > -0.5) continue;
+        auto root = g.XamlRoot();
+        if (!root) continue;
+        HWND top = TopWindowFor(root);
+        if (!top) continue;
+        int left = (int)(g.TransformToVisual(nullptr).TransformPoint({0, 0}).X * root.RasterizationScale());
+        auto it = tops.find(top);
+        tops[top] = it == tops.end() ? left : (std::min)(it->second, left);
+    }
+    for (auto& [top, st] : t_sinks) {
+        auto it = tops.find(top);
+        if (it == tops.end()) TrimSink(top, false, 0);
+        else TrimSink(top, true, it->second);
+    }
+}
+
+// Dia 1.7 puts the window buttons in the page's layer group; the shown toolbar
+// can paint over them. Raise their branch just above the toolbar's when covered.
+static void KeepCaptionAbove(const mux::FrameworkElement& grid, const mux::FrameworkElement& bar) {
+    if (!grid || !bar) return;
+    std::vector<mux::DependencyObject> barChain;
+    for (mux::DependencyObject d = bar; d; d = muxm::VisualTreeHelper::GetParent(d)) barChain.push_back(d);
+    mux::DependencyObject mine = grid;
+    for (auto parent = muxm::VisualTreeHelper::GetParent(mine); parent;
+         mine = parent, parent = muxm::VisualTreeHelper::GetParent(parent)) {
+        auto it = std::find(barChain.begin(), barChain.end(), parent);
+        if (it == barChain.end()) continue;
+        if (it == barChain.begin()) return;
+        auto panel = parent.try_as<muxc::Panel>();
+        auto myLayer = mine.try_as<mux::UIElement>();
+        auto barLayer = (*std::prev(it)).try_as<mux::UIElement>();
+        if (!panel || !myLayer || !barLayer) return;
+        uint32_t myIndex = 0, barIndex = 0;
+        panel.Children().IndexOf(myLayer, myIndex);
+        panel.Children().IndexOf(barLayer, barIndex);
+        int myZ = muxc::Canvas::GetZIndex(myLayer), barZ = muxc::Canvas::GetZIndex(barLayer);
+        bool covered = barZ > myZ || (barZ == myZ && barIndex > myIndex);
+        if (!covered) return;
+        static bool logged = false;
+        if (!logged) {
+            logged = true;
+            Log(L"window buttons: under the page (z %d at %u, page z %d at %u): raised", myZ, myIndex, barZ, barIndex);
+        }
+        muxc::Canvas::SetZIndex(myLayer, barZ + 1);
+        return;
+    }
 }
 
 static void UpdateHiddenToolbar() {
@@ -2246,6 +2459,21 @@ static void UpdateHiddenToolbar() {
             a.to = 0;
         }
         auto barEl = a.bar.get();
+        // Over the page moves the toolbar itself, so it must be the one Dia shows:
+        // the start page has another NavigationBarHost that is left empty.
+        if (a.overlay && (!barEl || barEl.ActualWidth() < 1)) {
+            auto live = FindVisual(group, [](const mux::DependencyObject& d) {
+                auto fe = d.try_as<mux::FrameworkElement>();
+                return fe && fe.Name() == L"NavigationBarHost" && fe.ActualWidth() >= 1;
+            }).try_as<mux::FrameworkElement>();
+            if (live && live != barEl) {
+                RaiseBar(a, false);
+                if (barEl) barEl.Translation({0.0f, 0.0f, 0.0f});
+                a.bar = winrt::make_weak(live);
+                barEl = live;
+                ApplyOffset(a, BarHeight(a), !a.animating);
+            }
+        }
         if (barEl && barEl.Visibility() != mux::Visibility::Visible) {
             barEl.Visibility(mux::Visibility::Visible);
         }
@@ -2254,6 +2482,17 @@ static void UpdateHiddenToolbar() {
         bool want = !hide || show || focused;
         double h = BarHeight(a);
         double target = want ? 0 : -h;
+        // Switch between over-the-page and pushing while finishing any slide where
+        // it was heading, then carry on in the new mode.
+        bool overlay = hide && g_hideToolbar.load() && OverlayToolbar();
+        if (a.overlay != overlay) {
+            if (a.overlay && barEl) barEl.Translation({0.0f, 0.0f, 0.0f});
+            if (a.overlay) RaiseBar(a, false);
+            a.overlay = overlay;
+            a.animating = false;
+            a.offset = a.to;
+            ApplyOffset(a, h, true);
+        }
         if (!hide && !a.animating && a.offset > -0.5) {
             group.Margin(a.saved);
             a.managed = false;
@@ -2272,6 +2511,9 @@ static void UpdateHiddenToolbar() {
     for (auto it = t_bars.begin(); it != t_bars.end();)
         it = it->second.group.get() ? std::next(it) : t_bars.erase(it);
 
+    UpdatePageClips();
+    UpdateSinkTrim();
+
     // Hiding toolbar slides top strip out of view and hides window controls in tandem.
     // Revealing toolbar on hover / sidebar open / new tab restores window controls.
     bool wantControls = !g_hideToolbar.load() || show || anyFocused;
@@ -2279,6 +2521,23 @@ static void UpdateHiddenToolbar() {
     for (auto h : FindNodes(L"MinimizeButton")) ApplyCollapsed(h, hideControls);
     for (auto h : FindNodes(L"MaximizeButton")) ApplyCollapsed(h, hideControls);
     for (auto h : FindNodes(L"CloseButton")) ApplyCollapsed(h, hideControls);
+    if (!hideControls) {
+        // Dia 1.7 can paint the page layer above the window buttons; put them back on top.
+        for (auto bh : FindNodes(L"NavigationBarHost")) {
+            auto bar = Obj<mux::FrameworkElement>(bh);
+            if (!bar || bar.ActualHeight() <= 1) continue;
+            auto root = bar.XamlRoot();
+            for (auto name : {L"MinimizeButton", L"MaximizeButton", L"CloseButton"})
+                for (auto ch : FindNodes(name)) {
+                    auto fe = Obj<mux::FrameworkElement>(ch);
+                    if (fe && fe.XamlRoot() == root) {
+                        try {
+                            KeepCaptionAbove(fe, bar);
+                        } catch (...) {}
+                    }
+                }
+        }
+    }
 }
 
 // --- Square corners targeting SharedSurface & ContentHost (not OS desktop window)
@@ -2330,16 +2589,55 @@ struct PageStretch {
     mux::Thickness saved{};
 };
 static thread_local std::vector<PageStretch> t_stretch;
+static thread_local std::vector<PageStretch> t_statusLift;  // link-hover bubbles raised above the overhang
 static const double kCornerOverhang = 9.0;
+
+// The link address bubble sits inside the stretched page, so the part hanging
+// past the window's bottom edge would be clipped: raise it by that overhang.
+static void LiftStatusBubbles(const std::vector<std::pair<mux::FrameworkElement, double>>& overhangs) {
+    for (auto h : FindNodes(L"StatusText")) {
+        auto tb = Obj<mux::FrameworkElement>(h);
+        if (!tb) continue;
+        auto bubble = muxm::VisualTreeHelper::GetParent(tb).try_as<mux::FrameworkElement>();
+        if (!bubble) continue;
+        double lift = 0;
+        for (mux::DependencyObject d = bubble; d; d = muxm::VisualTreeHelper::GetParent(d)) {
+            auto it = std::find_if(overhangs.begin(), overhangs.end(), [&](auto const& o) { return o.first == d; });
+            if (it != overhangs.end()) {
+                lift = it->second;
+                break;
+            }
+        }
+        PageStretch* st = nullptr;
+        for (auto& p : t_statusLift)
+            if (p.host.get() == bubble) st = &p;
+        if (!st) {
+            if (lift < 0.5) continue;
+            t_statusLift.push_back({winrt::make_weak(bubble), bubble.Margin()});
+            st = &t_statusLift.back();
+        }
+        auto m = st->saved;
+        m.Bottom += lift;
+        auto cur = bubble.Margin();
+        if (std::abs(cur.Bottom - m.Bottom) >= 0.5) bubble.Margin(m);
+    }
+    t_statusLift.erase(std::remove_if(t_statusLift.begin(), t_statusLift.end(),
+                                      [](const PageStretch& p) { return !p.host.get(); }),
+                       t_statusLift.end());
+}
 
 static void StretchPage(bool on) {
     if (!on) {
         for (auto& p : t_stretch)
             if (auto fe = p.host.get()) fe.Margin(p.saved);
         t_stretch.clear();
+        for (auto& p : t_statusLift)
+            if (auto fe = p.host.get()) fe.Margin(p.saved);
+        t_statusLift.clear();
         return;
     }
     if (t_sliding) return;
+    std::vector<std::pair<mux::FrameworkElement, double>> overhangs;
     for (auto h : FindNodes(L"ContentHost")) {
         auto fe = Obj<mux::FrameworkElement>(h);
         if (!fe || fe.ActualHeight() < 1) continue;
@@ -2354,12 +2652,17 @@ static void StretchPage(bool on) {
         if (!root) continue;
         double bottom = fe.TransformToVisual(root).TransformPoint({0, 0}).Y + fe.ActualHeight();
         double delta = root.ActualHeight() + kCornerOverhang - bottom;
-        if (std::abs(delta) < 0.5) continue;
-        auto m = fe.Margin();
-        m.Bottom -= delta;
-        if (m.Bottom > st->saved.Bottom) m.Bottom = st->saved.Bottom;
-        fe.Margin(m);
+        if (std::abs(delta) >= 0.5) {
+            auto old = fe.Margin();
+            auto m = old;
+            m.Bottom -= delta;
+            if (m.Bottom > st->saved.Bottom) m.Bottom = st->saved.Bottom;
+            fe.Margin(m);
+            bottom += old.Bottom - m.Bottom;
+        }
+        overhangs.emplace_back(fe, (std::max)(0.0, bottom - root.ActualHeight()));
     }
+    LiftStatusBubbles(overhangs);
 }
 
 static void UpdateSquareCorners() {
@@ -2441,7 +2744,7 @@ static muxc::Panel WindowBackgroundPanel(InstanceHandle root) {
 struct MaterialState {
     winrt::weak_ref<winrt::Microsoft::UI::Xaml::Hosting::DesktopWindowXamlSource> src;
     winrt::weak_ref<muxc::Panel> panel;
-    muxm::Brush currentProfileBrush{nullptr};
+    muxm::Brush savedBrush{nullptr};
     muxm::Brush clear{muxm::SolidColorBrush(winrt::Windows::UI::Color{0, 0, 0, 0})};
     std::wstring applied;
     InstanceHandle root = 0;
@@ -2468,76 +2771,47 @@ static void UpdateWindowMaterial() {
         auto src = m.src.get();
         if (!src) continue;
 
+        std::wstring want = on ? kind : L"";
+        if (m.applied == want) {
+            // Dia may repaint the background; keep it see-through while the material is on.
+            if (on)
+                if (auto p = m.panel.get(); p && p.Background() != m.clear) p.Background(m.clear);
+            continue;
+        }
+
         auto panel = m.panel.get();
         if (!panel) {
             panel = WindowBackgroundPanel(m.root);
             if (panel) {
                 m.panel = winrt::make_weak(panel);
+                m.savedBrush = panel.Background();
             }
         }
 
-        if (!on) {
-            if (!m.applied.empty()) {
-                src.SystemBackdrop(nullptr);
-                m.applied = L"";
-                Log(L"windowMaterial: restored default SystemBackdrop");
-            }
-            if (panel) {
-                try { panel.Opacity(1.0); } catch (...) {}
-            }
-            for (auto sbHandle : FindNodes(L"SidebarBorder")) {
-                if (auto sb = Obj<muxc::Border>(sbHandle)) {
-                    sb.Background(nullptr);
-                }
-            }
-            continue;
-        }
-
-        // Apply backdrop material if changed (neutral subtle greyish Mica / Acrylic)
-        if (m.applied != kind) {
-            if (kind == L"acrylic") {
+        if (want.empty()) {
+            src.SystemBackdrop(nullptr);
+            if (panel) panel.Background(m.savedBrush);
+        } else {
+            if (want == L"acrylic") {
                 src.SystemBackdrop(muxm::DesktopAcrylicBackdrop());
             } else {
                 muxm::MicaBackdrop mica;
-                if (kind == L"micaalt" || kind == L"micaAlt") {
+                if (want == L"micaalt" || want == L"micaAlt") {
                     mica.Kind(winrt::Microsoft::UI::Composition::SystemBackdrops::MicaKind::BaseAlt);
                 }
                 src.SystemBackdrop(mica);
             }
-            m.applied = kind;
-            Log(L"windowMaterial: applied SystemBackdrop '%s' (neutral)", kind.c_str());
+            // Clear Dia's panel colour so the backdrop shines through; restored when off.
+            if (panel) panel.Background(m.clear);
         }
-
-        // Clear root DesktopWindowXamlSource content background so Mica shines through
-        if (auto content = src.Content()) {
-            if (auto border = content.try_as<muxc::Border>()) {
-                if (border.Background() != m.clear) border.Background(m.clear);
-            } else if (auto grid = content.try_as<muxc::Grid>()) {
-                if (grid.Background() != m.clear) grid.Background(m.clear);
-            }
-        }
-
-        // Retain Dia's native space color on panel.Background so window borders always match the profile (blue, yellow, pink)
-        // Set panel.Opacity(0.90) so the desktop Mica/Acrylic subtly shines through without washing out profile colors
-        if (panel) {
-            try {
-                if (g_translucentSidebar.load()) {
-                    panel.Opacity(0.90);
-                } else {
-                    panel.Opacity(1.0);
-                }
-            } catch (...) {}
-        }
-
-        // Ensure SidebarBorder does not force a hardcoded grey color across profiles; let native profile color shine through
-        for (auto sbHandle : FindNodes(L"SidebarBorder")) {
-            if (auto sb = Obj<muxc::Border>(sbHandle)) {
-                if (sb.Background()) {
-                    sb.Background(nullptr);
-                }
-            }
-        }
+        m.applied = want;
+        Log(L"windowMaterial: %s", want.empty() ? L"off" : want.c_str());
     }
+
+    if (!on)
+        t_material.erase(std::remove_if(t_material.begin(), t_material.end(),
+                                        [](const MaterialState& m) { return m.applied.empty(); }),
+                         t_material.end());
 }
 
 // --- Clean Search Box
@@ -2877,23 +3151,47 @@ static void MakeSubtreeClear(const mux::DependencyObject& root, int depth = 0) {
     }
 }
 
+static muxm::Brush GetDiaNavBackgroundBrush() {
+    try {
+        auto app = mux::Application::Current();
+        if (app) {
+            auto res = app.Resources();
+            if (res) {
+                if (res.HasKey(winrt::box_value(L"NavigationBarBackgroundBrush"))) {
+                    return res.Lookup(winrt::box_value(L"NavigationBarBackgroundBrush")).try_as<muxm::Brush>();
+                }
+                if (res.HasKey(winrt::box_value(L"SolidBackgroundFillColorTertiaryBrush"))) {
+                    return res.Lookup(winrt::box_value(L"SolidBackgroundFillColorTertiaryBrush")).try_as<muxm::Brush>();
+                }
+                if (res.HasKey(winrt::box_value(L"SolidBackgroundFillColorBaseBrush"))) {
+                    return res.Lookup(winrt::box_value(L"SolidBackgroundFillColorBaseBrush")).try_as<muxm::Brush>();
+                }
+            }
+        }
+    } catch (...) {}
+    return nullptr;
+}
+
 static void RestoreSubtree(const mux::DependencyObject& root, int depth = 0) {
     if (!root || depth > 12) return;
     if (auto p = root.try_as<muxc::Panel>()) {
-        try { p.Background(nullptr); } catch (...) {}
+        try { p.ClearValue(muxc::Panel::BackgroundProperty()); } catch (...) {}
     } else if (auto cp = root.try_as<muxc::ContentPresenter>()) {
-        try { cp.Background(nullptr); } catch (...) {}
+        try { cp.ClearValue(muxc::ContentPresenter::BackgroundProperty()); } catch (...) {}
     } else if (auto cc = root.try_as<muxc::ContentControl>()) {
-        try { cc.Background(nullptr); } catch (...) {}
+        try { cc.ClearValue(muxc::Control::BackgroundProperty()); } catch (...) {}
     } else if (auto b = root.try_as<muxc::Border>()) {
         try {
             std::wstring bName(b.Name());
             if (bName != L"AssistantBar") {
-                b.Background(nullptr);
+                b.ClearValue(muxc::Border::BackgroundProperty());
+            }
+            if (bName == L"BottomSeparator") {
+                b.ClearValue(muxc::Border::BorderThicknessProperty());
             }
         } catch (...) {}
     } else if (auto c = root.try_as<muxc::Control>()) {
-        try { c.Background(nullptr); } catch (...) {}
+        try { c.ClearValue(muxc::Control::BackgroundProperty()); } catch (...) {}
     }
     int count = muxm::VisualTreeHelper::GetChildrenCount(root);
     for (int i = 0; i < count; ++i) {
@@ -2913,7 +3211,7 @@ static void UpdateNewTabPainting() {
                         if (st.savedGroupBackground) {
                             cg.Background(st.savedGroupBackground);
                         } else {
-                            cg.Background(nullptr);
+                            cg.ClearValue(muxc::Panel::BackgroundProperty());
                         }
                         if (auto scrim = st.scrimOverlay.get()) {
                             uint32_t idx = 0;
@@ -2928,7 +3226,7 @@ static void UpdateNewTabPainting() {
                         if (st.savedPageBackground) {
                             page.Background(st.savedPageBackground);
                         } else {
-                            page.Background(nullptr);
+                            page.ClearValue(muxc::Panel::BackgroundProperty());
                         }
                         if (auto pill = st.captionPill.get()) {
                             uint32_t idx = 0;
@@ -2942,17 +3240,30 @@ static void UpdateNewTabPainting() {
             for (auto bsHandle : FindNodes(L"BottomSeparator")) {
                 if (auto fe = Obj<mux::FrameworkElement>(bsHandle)) {
                     fe.Visibility(mux::Visibility::Visible);
-                    fe.Height(1);
+                    fe.ClearValue(mux::FrameworkElement::HeightProperty());
+                    if (auto b = fe.try_as<muxc::Border>()) {
+                        b.ClearValue(muxc::Border::BorderThicknessProperty());
+                    }
                 }
             }
             for (auto ch : FindNodes(L"NavigationChromeHost")) {
-                if (auto g = Obj<muxc::Grid>(ch)) RestoreSubtree(g);
+                if (auto g = Obj<muxc::Grid>(ch)) {
+                    RestoreSubtree(g);
+                    if (!g.Background()) {
+                        if (auto b = GetDiaNavBackgroundBrush()) g.Background(b);
+                    }
+                }
             }
             for (auto ch : FindNodes(L"NavigationBarHost")) {
                 if (auto cc = Obj<muxc::ContentControl>(ch)) RestoreSubtree(cc);
             }
             for (auto ch : FindNodes(L"NavigationBarContent")) {
-                if (auto g = Obj<muxc::Grid>(ch)) RestoreSubtree(g);
+                if (auto g = Obj<muxc::Grid>(ch)) {
+                    RestoreSubtree(g);
+                    if (!g.Background()) {
+                        if (auto b = GetDiaNavBackgroundBrush()) g.Background(b);
+                    }
+                }
             }
             for (auto ch : FindNodes(L"ContentHost")) {
                 if (auto cc = Obj<muxc::ContentControl>(ch)) cc.Background(nullptr);
@@ -4167,6 +4478,15 @@ static void EvaluateNode(const Target& target, DWORD thread) {
                 }
                 if (transparentToolbar) {
                     MakeSubtreeClear(fe);
+                } else {
+                    RestoreSubtree(fe);
+                    if (name == L"NavigationBarContent" || name == L"NavigationChromeHost") {
+                        if (auto p = fe.try_as<muxc::Panel>()) {
+                            if (!p.Background()) {
+                                if (auto b = GetDiaNavBackgroundBrush()) p.Background(b);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -4178,6 +4498,12 @@ static void EvaluateNode(const Target& target, DWORD thread) {
                 if (transparentToolbar) {
                     fe.Visibility(mux::Visibility::Collapsed);
                     fe.Height(0);
+                } else {
+                    fe.Visibility(mux::Visibility::Visible);
+                    fe.ClearValue(mux::FrameworkElement::HeightProperty());
+                    if (auto b = fe.try_as<muxc::Border>()) {
+                        b.ClearValue(muxc::Border::BorderThicknessProperty());
+                    }
                 }
             }
         }
@@ -4210,12 +4536,15 @@ static void EvaluateNode(const Target& target, DWORD thread) {
         ApplyCollapsed(handle, g_hideLoadingAnimation.load());
     } else if (name == L"SidebarBorder") {
         UpdateSidebarGrain(handle, g_sidebarGrain.load());
-        ApplyOpacity(handle, L"0.7", g_translucentSidebar.load());
+        // Never fade the border: it contains the sidebar's text. Clear any value
+        // applied by older builds and let the floating surface own translucency.
+        ApplyOpacity(handle, L"0.7", false);
     } else if (name == L"SidebarFloatingSurface") {
         UpdateSidebarGrain(handle, g_sidebarGrain.load());
         ApplyOpacity(handle, L"0.7", g_translucentSidebar.load());
     } else if (name == L"SidebarFloatingTint") {
-        ApplyOpacity(handle, L"0.7", g_translucentSidebar.load());
+        // The surface's opacity already fades its tint; fading both doubles up.
+        ApplyOpacity(handle, L"0.7", false);
     } else if (name == L"StatusText" || name == L"StatusPill" ||
                name == L"StatusPillIcon" || name == L"StatusPillText") {
         UpdateLinkAddressNode(handle);
@@ -4556,6 +4885,7 @@ static bool GetTweakBool(const std::wstring& key) {
 
 static std::wstring GetTweakString(const std::wstring& key) {
     if (key == L"windowMaterial") return g_cfg.windowMaterial;
+    if (key == L"hideToolbarMode") return g_cfg.hideToolbarMode;
     if (key == L"sidebarGrainMaterial") return g_cfg.sidebarGrainMaterial;
     if (key == L"sidebarGrainAmount") return std::to_wstring(g_cfg.sidebarGrainAmount);
     if (key == L"sidebarGrainSoftness") return std::to_wstring(g_cfg.sidebarGrainSoftness);
@@ -6181,6 +6511,8 @@ static mux::FrameworkElement BuildPage(const NavHook& hook) {
     // 3. Toolbar
     std::vector<mux::FrameworkElement> tbRows;
     tbRows.push_back(BuildRow({L"hideToolbar", L"Hide toolbar", L"Hide the toolbar row: the address field, navigation buttons, and extensions.", L"\uE838"}));
+    tbRows.push_back(BuildRow({L"hideToolbarMode", L"Hidden toolbar behavior", L"Over the page keeps the page in place and slides the toolbar over its top; pushes page down moves the page with it.", L"\uE838",
+        {{L"overlay", L"Over the page"}, {L"push", L"Pushes page down"}}}));
     tbRows.push_back(BuildRow({L"toolbarColor", L"Toolbar color", L"Make the toolbar transparent so the sidebar color or window backdrop shines through.", L"\uE790"}));
     tbRows.push_back(BuildRow({L"revealToolbarOnHover", L"Reveal toolbar on hover", L"Reveals the toolbar when moving the pointer to the top edge of the window.", L"\uE838"}));
     tbRows.push_back(BuildRow({L"showToolbarWithSidebar", L"Show toolbar with sidebar", L"Keeps the toolbar showing when the sidebar is open.", L"\uE838"}));
@@ -6539,6 +6871,28 @@ static void WriteNtpProbe() {
                 if (auto fe = obj.try_as<mux::FrameworkElement>()) {
                     text += L" size=" + std::to_wstring((int)std::lround(fe.ActualWidth())) + L"x" +
                             std::to_wstring((int)std::lround(fe.ActualHeight()));
+                    try {
+                        auto at = fe.TransformToVisual(nullptr).TransformPoint({0, 0});
+                        text += L" at=" + std::to_wstring((int)std::lround(at.X)) + L"," +
+                                std::to_wstring((int)std::lround(at.Y));
+                    } catch (...) {}
+                    auto m = fe.Margin();
+                    wchar_t mg[96]{};
+                    swprintf_s(mg, L" margin=%.0f,%.0f,%.0f,%.0f", m.Left, m.Top, m.Right, m.Bottom);
+                    text += mg;
+                    if (auto b = fe.try_as<muxc::Border>()) {
+                        auto bt = b.BorderThickness();
+                        wchar_t bb[96]{};
+                        swprintf_s(bb, L" border=%.0f,%.0f,%.0f,%.0f brush=%d", bt.Left, bt.Top, bt.Right,
+                                   bt.Bottom, b.BorderBrush() ? 1 : 0);
+                        text += bb;
+                    } else if (auto g = fe.try_as<muxc::Grid>()) {
+                        auto bt = g.BorderThickness();
+                        wchar_t bb[96]{};
+                        swprintf_s(bb, L" border=%.0f,%.0f,%.0f,%.0f brush=%d", bt.Left, bt.Top, bt.Right,
+                                   bt.Bottom, g.BorderBrush() ? 1 : 0);
+                        text += bb;
+                    }
                     text += L" vis=" + std::to_wstring((int)fe.Visibility());
                     wchar_t op[32]{};
                     swprintf_s(op, L"%.2f", fe.Opacity());

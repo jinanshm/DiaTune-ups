@@ -217,6 +217,9 @@ function Read-State {
     if ($null -ne $data.tweaks.newTabPaintingTint) {
         $state['newTabPaintingTint'] = [int]$data.tweaks.newTabPaintingTint
     }
+    if ($data.tweaks.hideToolbarMode) {
+        $state['hideToolbarMode'] = $data.tweaks.hideToolbarMode
+    }
     return $state
 }
 
@@ -247,6 +250,9 @@ function Write-State {
     }
     if ($State.ContainsKey('newTabPaintingTint')) {
         $tweaks['newTabPaintingTint'] = [int]$State['newTabPaintingTint']
+    }
+    if ($State.ContainsKey('hideToolbarMode')) {
+        $tweaks['hideToolbarMode'] = $State['hideToolbarMode']
     }
 
     $document = [ordered]@{
@@ -465,6 +471,9 @@ function Write-XamlConfig {
         if ($State['windowMaterial'] -is [string]) { $State['windowMaterial'] } else { 'mica' }
     } else { 'default' }
     $lines += "windowMaterial=$winMat"
+
+    $tbMode = if ($State['hideToolbarMode']) { $State['hideToolbarMode'] } else { 'overlay' }
+    $lines += "hideToolbarMode=$tbMode"
 
     $peekTrig = if ($State['peekTrigger']) { $State['peekTrigger'] } else { 'shift' }
     $lines += "peekTrigger=$peekTrig"
