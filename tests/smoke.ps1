@@ -32,6 +32,10 @@ $required = @(
     'cli\lib\dia.ps1',
     'cli\lib\state.ps1',
     'src\agent\diatweaks-agent.cpp',
+    'src\xaml\diatweaks-xaml.cpp',
+    'src\xaml\hook.asm',
+    'src\xaml\qifuncs.h',
+    'src\injector\diatweaks-inject.cpp',
     'scripts\build.ps1'
 )
 
@@ -72,7 +76,7 @@ foreach ($patch in $manifest.patches) {
     }
 
     if ($patch.supported) {
-        Assert-True ($patch.mechanism -in @('border', 'corners', 'awake')) `
+        Assert-True ($patch.mechanism -in @('border', 'corners', 'awake', 'xaml')) `
             "$($patch.key) names a Windows mechanism"
     } else {
         Assert-True (-not $patch.mechanism) "$($patch.key) has no mechanism because it is unavailable"
@@ -80,8 +84,14 @@ foreach ($patch in $manifest.patches) {
 }
 
 $supported = @($manifest.patches | Where-Object { $_.supported } | ForEach-Object { $_.key })
-Assert-Equal 3 $supported.Count 'three tweaks are available on Windows'
-foreach ($key in @('edgeToEdge', 'squareSidebarCorners', 'keepWindowsActive')) {
+Assert-True ($supported.Count -ge 20) 'expanded tweaks are available on Windows'
+foreach ($key in @('edgeToEdge', 'squareSidebarCorners', 'keepWindowsActive',
+        'hideToolbar', 'toolbarColor', 'revealToolbarOnHover', 'hideSidebarButton', 'hideChatButton', 'showAddressField',
+        'showToolbarWithSidebar', 'showToolbarOnNewTab', 'hideTrafficLights',
+        'hidePersonalizeButton', 'hideUpgradeBanner', 'hideTabSearchButton',
+        'profileEmoji', 'sidebarGrain', 'pinnedExtensions', 'hideLoadingAnimation',
+        'hidePinnedTabBorder', 'hideTabHoverCard', 'translucentSidebar', 'windowMaterial',
+        'dontPopUpDownloads', 'cleanSearchBox', 'hideLinkAddress')) {
     Assert-True ($supported -contains $key) "$key is supported"
 }
 
@@ -112,14 +122,21 @@ $script:StateDir = $tempStateDir
 $script:StatePath = Join-Path $tempStateDir 'state.json'
 try {
     $state = Read-State
-    Assert-True ([bool]$state['edgeToEdge']) 'edgeToEdge defaults on'
-    Assert-True ([bool]$state['squareSidebarCorners']) 'squareSidebarCorners defaults on'
+    Assert-True (-not [bool]$state['edgeToEdge']) 'edgeToEdge defaults off'
+    Assert-True (-not [bool]$state['squareSidebarCorners']) 'squareSidebarCorners defaults off'
     Assert-True (-not [bool]$state['keepWindowsActive']) 'keepWindowsActive defaults off'
 
     $state['keepWindowsActive'] = $true
     Write-State -State $state
     $reloaded = Read-State
     Assert-True ([bool]$reloaded['keepWindowsActive']) 'state round-trips through state.json'
+
+    Assert-True (-not [bool]$state['hideToolbar']) 'hideToolbar defaults off'
+    $state['hideToolbar'] = $true
+    Write-XamlConfig -State $state
+    $ini = Get-Content -LiteralPath (Join-Path $script:StateDir 'xaml.cfg') -Raw
+    Assert-True ($ini.Contains('hideToolbar=1')) 'xaml.cfg carries enabled XAML tweaks'
+    Assert-True ($ini.Contains('hideChatButton=0')) 'xaml.cfg carries disabled XAML tweaks'
 } finally {
     Remove-Item -LiteralPath $tempStateDir -Recurse -Force -ErrorAction SilentlyContinue
     $script:StatePath = $savedStatePath
@@ -148,8 +165,12 @@ foreach ($key in $keys) {
     Assert-True ($readme.Contains($key)) "README documents $key"
 }
 
-if (-not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-agent.exe'))) {
-    Write-Warning 'bin\diatweaks-agent.exe is not built yet; run scripts\build.ps1.'
+if (-not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-agent.ps1')) -and
+    -not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-agent.exe'))) {
+    Write-Warning 'bin\diatweaks-agent.ps1 is not built yet; run scripts\build.ps1.'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-xaml.dll'))) {
+    Write-Warning 'bin\diatweaks-xaml.dll is not built yet; run scripts\build.ps1.'
 }
 
 Write-Host "smoke: $script:checks checks passed" -ForegroundColor Green

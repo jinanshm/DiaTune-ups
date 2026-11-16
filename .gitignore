@@ -1,4 +1,36 @@
+# Build outputs and binaries
 bin/
+obj/
+build/
+dist/
+
+# Compiler and linker intermediates
 *.obj
 *.pdb
 *.ilk
+*.exp
+*.lib
+*.idb
+
+# Logs and runtime artifacts
+*.log
+*.tmp
+*.bak
+*.swp
+
+# Visual Studio / IDE files
+.vs/
+*.user
+*.suo
+*.sln.docstates
+
+# Python scratch / bytecode
+scratch/
+__pycache__/
+*.py[cod]
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+.DS_Store

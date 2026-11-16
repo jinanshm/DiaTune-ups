@@ -4,6 +4,7 @@
 #   powershell -ExecutionPolicy Bypass -File cli\diatweaks.ps1 list
 
 $ErrorActionPreference = 'Stop'
+$env:SEE_MASK_NOZONECHECKS = '1'
 
 . (Join-Path $PSScriptRoot 'lib\windows.ps1')
 . (Join-Path $PSScriptRoot 'lib\dia.ps1')
@@ -18,8 +19,10 @@ Commands:
   list                    Show every tweak and whether it's on
   enable <tweak...>       Turn tweaks on
   disable <tweak...>      Turn tweaks off
+  set <tweak> <value>     Set a tweak's option (e.g. windowMaterial acrylic)
   status                  Show Dia's version and which tweaks are on
   apply                   Apply the tweaks to Dia's open windows now
+  dump                    List Dia's live XAML element names (for new tweaks)
   watch                   Keep applying them as Dia opens windows
   launch                  Open Dia, then apply the tweaks
   restore [--purge]       Put Dia's windows back to normal
@@ -29,7 +32,9 @@ Tweaks can be named by key or title, like edgeToEdge or "Edge-to-edge window".
 Add -y or --yes to answer yes to every question.
 
 The window tweaks are DWM hints, so Dia has to be open when they are applied.
-Use `diatweaks launch` or leave `diatweaks watch` running to keep them on.
+The toolbar tweaks load a small helper into Dia's browser process; the signed
+package is never modified. Use `diatweaks launch` or leave `diatweaks watch`
+running to keep both applied.
 '@
 
 function Write-Info {
@@ -78,6 +83,41 @@ function Write-TweakList {
     }
 }
 
+function Invoke-TreeDump {
+    if (-not (Test-DiaRunning)) {
+        Write-Warn 'Dia is not running. Run `diatweaks launch` first.'
+        return
+    }
+
+    $state = Read-State
+    $result = Invoke-XamlApply -State $state -Force
+    if (-not $result.Loaded) {
+        if ($result.Message) { Write-Warn $result.Message }
+        throw 'The XAML helper is not loaded in Dia, so there is no tree to dump.'
+    }
+
+    $request = Join-Path $script:StateDir 'xaml.dump.request'
+    $tree = Join-Path $script:StateDir 'xaml.tree.txt'
+    Remove-Item -LiteralPath $tree -Force -ErrorAction SilentlyContinue
+    [System.IO.File]::WriteAllText($request, (Get-Date).ToString('o'))
+
+    $deadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Path -LiteralPath $tree) { break }
+        Start-Sleep -Milliseconds 150
+    }
+
+    if (-not (Test-Path -LiteralPath $tree)) {
+        Remove-Item -LiteralPath $request -Force -ErrorAction SilentlyContinue
+        throw "Dia did not answer the tree dump request. Check $script:StateDir\xaml.log."
+    }
+
+    $lines = @(Get-Content -LiteralPath $tree)
+    $nodes = @($lines | Where-Object { $_ -and -not $_.StartsWith('#') })
+    Write-Success "Dumped $($nodes.Count) named element(s) to $tree"
+    $nodes
+}
+
 function Write-ApplySummary {
     param($Result)
 
@@ -90,7 +130,6 @@ function Write-ApplySummary {
 
     $what = @()
     if ($Result.EdgeToEdge) { $what += 'an edge-to-edge window' }
-    if ($Result.Square) { $what += 'square corners' }
     if ($what.Count -eq 0) {
         Write-Info "All window tweaks are off; Dia's windows are back to the normal frame."
     } else {
@@ -100,6 +139,10 @@ function Write-ApplySummary {
 
     if ($Result.KeepAwake -and $Result.AgentRunning) {
         Write-Info 'The display will stay awake while Dia is open.'
+    }
+
+    if ($Result.XamlActive -and $Result.XamlLoaded) {
+        Write-Success 'The toolbar tweaks are live in Dia.'
     }
 }
 
@@ -222,6 +265,32 @@ function Invoke-SetTweaks {
     Write-ApplySummary -Result $result
 }
 
+function Invoke-SetTweakValue {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Value
+    )
+
+    $manifest = Read-Manifest
+    $patch = Find-Tweak $manifest $Name
+    if (-not $patch.supported) {
+        throw "$($patch.title) isn't available on Windows."
+    }
+
+    $state = Read-State
+    if ($patch.key -eq 'sidebarGrain') {
+        $state['sidebarGrain'] = $true
+        $state['sidebarGrainMaterial'] = $Value
+    } else {
+        $state[$patch.key] = $Value
+    }
+    Write-State -State $state
+
+    Write-Success "Set $($patch.title) to '$Value'."
+    $result = Invoke-Apply
+    Write-ApplySummary -Result $result
+}
+
 function Invoke-ApplyCommand {
     $result = Invoke-Apply
     Write-ApplySummary -Result $result
@@ -235,7 +304,7 @@ function Invoke-Watch {
     while ($true) {
         try {
             $result = Invoke-Apply
-            $signature = '{0}|{1}|{2}|{3}' -f $result.Windows, $result.EdgeToEdge, $result.Square, $result.AgentRunning
+            $signature = '{0}|{1}|{2}|{3}|{4}|{5}' -f $result.Windows, $result.EdgeToEdge, $result.Square, $result.AgentRunning, $result.XamlActive, $result.XamlLoaded
             if ($signature -ne $lastSignature) {
                 Write-ApplySummary -Result $result
                 $lastSignature = $signature
@@ -255,6 +324,13 @@ function Invoke-Watch {
 }
 
 function Invoke-Launch {
+    $windows = @(Get-DiaWindows)
+    if ($windows.Count -eq 0 -and (Test-DiaRunning)) {
+        # Headless/zombie processes without a visible window
+        Stop-Process -Name 'Dia' -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+    }
+
     if (Test-DiaRunning) {
         Write-Info 'Dia is already running.'
     } else {
@@ -357,11 +433,23 @@ try {
         'disable' {
             Invoke-SetTweaks -Names $names -On $false -AssumeYes $assumeYes
         }
+        'set' {
+            if ($names.Count -lt 2) {
+                throw "Usage: diatweaks set <tweak> <value>"
+            }
+            Invoke-SetTweakValue -Name $names[0] -Value $names[1]
+        }
         'status' {
             Invoke-Status
         }
         'apply' {
             Invoke-ApplyCommand
+        }
+        'dump' {
+            Invoke-TreeDump
+        }
+        'tree' {
+            Invoke-TreeDump
         }
         'watch' {
             Invoke-Watch

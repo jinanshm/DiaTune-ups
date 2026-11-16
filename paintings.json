@@ -1,0 +1,723 @@
+[
+  {
+    "src": "paintings/tennis_tournament_1983.1.5.jpg",
+    "title": "Tennis Tournament",
+    "artist": "George Bellows",
+    "date": "1920",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/old_house_at_east_hampton_2015.19.15.jpg",
+    "title": "Old House at East Hampton",
+    "artist": "Childe Hassam",
+    "date": "1916",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/my_family_1983.1.3.jpg",
+    "title": "My Family",
+    "artist": "George Bellows",
+    "date": "1916",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_wind_1985.64.41.jpg",
+    "title": "The Wind",
+    "artist": "Félix Vallotton",
+    "date": "1910",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/peaches_on_a_plate_1970.17.79.jpg",
+    "title": "Peaches on a Plate",
+    "artist": "Auguste Renoir",
+    "date": "1902/1905",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/may_night_2014.136.6.jpg",
+    "title": "May Night",
+    "artist": "Willard Leroy Metcalf",
+    "date": "1906",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/place_du_carrousel_paris_1970.17.55.jpg",
+    "title": "Place du Carrousel, Paris",
+    "artist": "Camille Pissarro",
+    "date": "1900",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/chateau_noir_1958.10.1.jpg",
+    "title": "Château Noir",
+    "artist": "Paul Cezanne",
+    "date": "1900/1904",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/a_light_on_the_sea_2014.79.48.jpg",
+    "title": "A Light on the Sea",
+    "artist": "Winslow Homer",
+    "date": "1897",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/for_the_track_1997.131.1.jpg",
+    "title": "For the Track",
+    "artist": "John Frederick Peto",
+    "date": "1895",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_entrance_to_the_tautira_river_tahiti_fisherman_spearing_a_fish_1966.6.1.jpg",
+    "title": "The Entrance to the Tautira River, Tahiti. Fisherman Spearing a Fish",
+    "artist": "John La Farge",
+    "date": "c. 1895",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/gathering_autumn_flowers_2012.89.1.jpg",
+    "title": "Gathering Autumn Flowers",
+    "artist": "William Merritt Chase",
+    "date": "1894/1895",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/buddha_s_flowers_lotus_tokyo_2018.44.22.jpg",
+    "title": "Buddha's Flowers: Lotus, Tokyo",
+    "artist": "Theodore Wores",
+    "date": "1894",
+    "medium": "Oil on board"
+  },
+  {
+    "src": "paintings/denise_marechal_2019.118.1.jpg",
+    "title": "Denise Maréchal",
+    "artist": "Théo van Rysselberghe",
+    "date": "c. 1894",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/the_yellow_curtain_1970.17.95.jpg",
+    "title": "The Yellow Curtain",
+    "artist": "Edouard Vuillard",
+    "date": "c. 1893",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/u_s_thread_company_mills_willimantic_connecticut_1990.74.1.jpg",
+    "title": "U.S. Thread Company Mills, Willimantic, Connecticut",
+    "artist": "Julian Alden Weir",
+    "date": "c. 1893/1897",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_boating_party_1963.10.94.jpg",
+    "title": "The Boating Party",
+    "artist": "Mary Cassatt",
+    "date": "1893/1894",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/pavement_cairo_2006.121.1.jpg",
+    "title": "Pavement, Cairo",
+    "artist": "John Singer Sargent",
+    "date": "1891",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/in_the_park_paris_2014.18.44.jpg",
+    "title": "In the Park, Paris",
+    "artist": "Maurice Prendergast",
+    "date": "1891",
+    "medium": "Oil on canvas on board"
+  },
+  {
+    "src": "paintings/the_race_track_1985.64.18.jpg",
+    "title": "The Race Track",
+    "artist": "Jean-Louis Forain",
+    "date": "c. 1891",
+    "medium": "Gouache on canvas"
+  },
+  {
+    "src": "paintings/giant_magnolias_on_a_blue_velvet_cloth_1996.14.1.jpg",
+    "title": "Giant Magnolias on a Blue Velvet Cloth",
+    "artist": "Martin Johnson Heade",
+    "date": "c. 1890",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/slate_pipe_tobacco_and_box_of_matches_2015.19.195.jpg",
+    "title": "Slate, Pipe, Tobacco, and Box of Matches",
+    "artist": "Peter McCallion",
+    "date": "c. 1890/1900",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_conversation_1970.17.92.jpg",
+    "title": "The Conversation",
+    "artist": "Edouard Vuillard",
+    "date": "1891",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_valley_of_the_seine_from_the_hills_of_giverny_2014.79.30.jpg",
+    "title": "The Valley of the Seine, from the Hills of Giverny",
+    "artist": "Theodore Robinson",
+    "date": "1892",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/peach_blossom_1943.11.8.jpg",
+    "title": "Peach Blossom",
+    "artist": "Beatrix Godwin Whistler",
+    "date": "c. 1890-1894",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/girl_in_white_1963.10.30.jpg",
+    "title": "Girl in White",
+    "artist": "Vincent van Gogh",
+    "date": "1890",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_island_of_raguenez_brittany_1970.17.46.jpg",
+    "title": "The Island of Raguenez, Brittany",
+    "artist": "Henri Moret",
+    "date": "1890/1895",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/notre_dame_de_paris_2015.19.79.jpg",
+    "title": "Notre Dame de Paris",
+    "artist": "Robert William Vonnoh",
+    "date": "c. 1890",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/girl_in_a_boat_with_geese_1970.17.50.jpg",
+    "title": "Girl in a Boat with Geese",
+    "artist": "Berthe Morisot",
+    "date": "c. 1889",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/still_life_of_oranges_and_lemons_with_blue_gloves_2014.18.13.jpg",
+    "title": "Still Life of Oranges and Lemons with Blue Gloves",
+    "artist": "Vincent van Gogh",
+    "date": "1889",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/self_portrait_1998.74.5.jpg",
+    "title": "Self-Portrait",
+    "artist": "Vincent van Gogh",
+    "date": "1889",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/an_aztec_sculptor_2005.107.1.jpg",
+    "title": "An Aztec Sculptor",
+    "artist": "George de Forest Brush",
+    "date": "1887",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/a_pomegranate_siena_2018.44.8.jpg",
+    "title": "A Pomegranate, Siena",
+    "artist": "George Henry Hall",
+    "date": "1885",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/palmer_river_2021.11.1.jpg",
+    "title": "Palmer River",
+    "artist": "Edward Mitchell Bannister",
+    "date": "1885",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/ripening_pears_2004.29.1.jpg",
+    "title": "Ripening Pears",
+    "artist": "Joseph Decker",
+    "date": "c. 1884/1885",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/lemons_2018.44.10.jpg",
+    "title": "Lemons",
+    "artist": "George Henry Hall",
+    "date": "1884",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/on_the_coast_of_new_jersey_2015.19.119.jpg",
+    "title": "On the Coast of New Jersey",
+    "artist": "William Trost Richards",
+    "date": "1883",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/bathers_study_for_bathers_at_asnieres_2014.18.54.jpg",
+    "title": "Bathers (Study for \"Bathers at Asnières\")",
+    "artist": "Georges Seurat",
+    "date": "1883/1884",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/the_gardener_old_peasant_with_cabbage_1994.59.6.jpg",
+    "title": "The Gardener - Old Peasant with Cabbage",
+    "artist": "Camille Pissarro",
+    "date": "1883-1895",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/young_peasant_girls_resting_in_the_fields_near_pontoise_2014.18.42.jpg",
+    "title": "Young Peasant Girls Resting in the Fields near Pontoise",
+    "artist": "Camille Pissarro",
+    "date": "1882",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_artist_s_garden_at_vetheuil_1970.17.45.jpg",
+    "title": "The Artist's Garden at Vétheuil",
+    "artist": "Claude Monet",
+    "date": "1881",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/still_life_with_oranges_and_goblet_of_wine_1999.79.32.jpg",
+    "title": "Still Life with Oranges and Goblet of Wine",
+    "artist": "John Frederick Peto",
+    "date": "1880-1890s",
+    "medium": "Oil on artist's board"
+  },
+  {
+    "src": "paintings/little_girl_in_a_blue_armchair_1983.1.18.jpg",
+    "title": "Little Girl in a Blue Armchair",
+    "artist": "Mary Cassatt",
+    "date": "1878",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/skiffs_1985.64.6.jpg",
+    "title": "Skiffs",
+    "artist": "Gustave Caillebotte",
+    "date": "1877",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/mount_corcoran_2014.79.4.jpg",
+    "title": "Mount Corcoran",
+    "artist": "Albert Bierstadt",
+    "date": "c. 1876-1877",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/picking_flowers_1970.17.61.jpg",
+    "title": "Picking Flowers",
+    "artist": "Auguste Renoir",
+    "date": "1875",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_naturalists_2015.19.165.jpg",
+    "title": "The Naturalists",
+    "artist": "Jehan Georges Vibert",
+    "date": "late 1870s",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/school_time_2014.18.19.jpg",
+    "title": "School Time",
+    "artist": "Winslow Homer",
+    "date": "c. 1874",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/east_hampton_beach_long_island_2012.89.2.jpg",
+    "title": "East Hampton Beach, Long Island",
+    "artist": "Winslow Homer",
+    "date": "1874",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/dad_s_coming_2001.97.1.jpg",
+    "title": "Dad's Coming!",
+    "artist": "Winslow Homer",
+    "date": "1873",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/american_landscape_2025.25.1.jpg",
+    "title": "American Landscape",
+    "artist": "Elizabeth Gilbert Jerome",
+    "date": "1872",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/sunlight_and_shadow_the_newbury_marshes_2010.74.1.jpg",
+    "title": "Sunlight and Shadow: The Newbury Marshes",
+    "artist": "Martin Johnson Heade",
+    "date": "c. 1871/1875",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/cattleya_orchid_and_three_hummingbirds_1982.73.1.jpg",
+    "title": "Cattleya Orchid and Three Hummingbirds",
+    "artist": "Martin Johnson Heade",
+    "date": "1871",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/young_woman_with_peonies_1983.1.6.jpg",
+    "title": "Young Woman with Peonies",
+    "artist": "Frédéric Bazille",
+    "date": "1870",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/tulip_2018.44.9.jpg",
+    "title": "Tulip",
+    "artist": "George Henry Hall",
+    "date": "1869",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/harvest_scene_in_the_delaware_valley_2002.154.1.jpg",
+    "title": "Harvest Scene in the Delaware Valley",
+    "artist": "George Inness",
+    "date": "1867",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/washerwomen_on_the_banks_of_the_durance_2007.73.1.jpg",
+    "title": "Washerwomen on the Banks of the Durance",
+    "artist": "Paul Guigou",
+    "date": "1866",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/gathering_lilies_2008.66.3.jpg",
+    "title": "Gathering Lilies",
+    "artist": "Eastman Johnson",
+    "date": "1865",
+    "medium": "Oil on board"
+  },
+  {
+    "src": "paintings/the_juniata_evening_2010.107.1.jpg",
+    "title": "The Juniata, Evening",
+    "artist": "Thomas Moran",
+    "date": "1864",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_artist_sketching_at_mount_desert_maine_2004.99.1.jpg",
+    "title": "The Artist Sketching at Mount Desert, Maine",
+    "artist": "Sanford Robinson Gifford",
+    "date": "1864-1865",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/october_2003.29.1.jpg",
+    "title": "October",
+    "artist": "William Trost Richards",
+    "date": "1863",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_eel_gatherers_1943.15.1.jpg",
+    "title": "The Eel Gatherers",
+    "artist": "Jean-Baptiste-Camille Corot",
+    "date": "1860/1865",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/warwick_castle_england_1991.142.1.jpg",
+    "title": "Warwick Castle, England",
+    "artist": "Jasper Francis Cropsey",
+    "date": "1857",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/two_women_chatting_by_the_sea_st_thomas_1985.64.30.jpg",
+    "title": "Two Women Chatting by the Sea, St. Thomas",
+    "artist": "Camille Pissarro",
+    "date": "1856",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_lackawanna_valley_1945.4.1.jpg",
+    "title": "The Lackawanna Valley",
+    "artist": "George Inness",
+    "date": "c. 1856",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/achille_de_gas_in_the_uniform_of_a_cadet_1963.10.123.jpg",
+    "title": "Achille De Gas in the Uniform of a Cadet",
+    "artist": "Edgar Degas",
+    "date": "1856/1857",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/roadside_cottage_2007.94.1.jpg",
+    "title": "Roadside Cottage",
+    "artist": "Dennis Miller Bunker",
+    "date": "1889",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/breakfast_1999.79.29.jpg",
+    "title": "Breakfast",
+    "artist": "John Frederick Peto",
+    "date": "c. 1890s",
+    "medium": "Oil on academy board"
+  },
+  {
+    "src": "paintings/dahlias_garden_at_petit_gennevilliers_2016.48.1.jpg",
+    "title": "Dahlias, Garden at Petit Gennevilliers",
+    "artist": "Gustave Caillebotte",
+    "date": "1893",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/boy_on_the_rocks_1963.10.63.jpg",
+    "title": "Boy on the Rocks",
+    "artist": "Henri Rousseau",
+    "date": "1895/1897",
+    "medium": "Oil on linen"
+  },
+  {
+    "src": "paintings/white_poodle_in_a_punt_1999.80.22.jpg",
+    "title": "White Poodle in a Punt",
+    "artist": "George Stubbs",
+    "date": "c. 1780",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/waiting_for_the_stage_2014.79.36.jpg",
+    "title": "Waiting for the Stage",
+    "artist": "Richard Caton Woodville",
+    "date": "1851",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/indians_cooking_maize_1971.83.16.jpg",
+    "title": "Indians Cooking Maize",
+    "artist": "American 19th Century",
+    "date": "second half 19th century",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/city_hall_at_thorn_1973.13.1.jpg",
+    "title": "City Hall at Thorn",
+    "artist": "Eduard Gaertner",
+    "date": "1848",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/mississippi_boatman_2004.66.1.jpg",
+    "title": "Mississippi Boatman",
+    "artist": "George Caleb Bingham",
+    "date": "1850",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_voyage_of_life_childhood_1971.16.1.jpg",
+    "title": "The Voyage of Life: Childhood",
+    "artist": "Thomas Cole",
+    "date": "1842",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/italian_coast_scene_with_ruined_tower_1993.55.1.jpg",
+    "title": "Italian Coast Scene with Ruined Tower",
+    "artist": "Thomas Cole",
+    "date": "1838",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_tough_story_scene_in_a_country_tavern_2014.79.28.jpg",
+    "title": "The Tough Story - Scene in a Country Tavern",
+    "artist": "William Sidney Mount",
+    "date": "1837",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/view_of_bozen_with_a_painter_1994.52.1.jpg",
+    "title": "View of Bozen with a Painter",
+    "artist": "Jules Coignet",
+    "date": "1837",
+    "medium": "Oil on paper on canvas"
+  },
+  {
+    "src": "paintings/john_g_read_1978.80.18.jpg",
+    "title": "John G. Read",
+    "artist": "Royall Brewster Smith",
+    "date": "1833",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_return_2014.79.12.jpg",
+    "title": "The Return",
+    "artist": "Thomas Cole",
+    "date": "1837",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/fanciful_landscape_1963.9.2.jpg",
+    "title": "Fanciful Landscape",
+    "artist": "Thomas Doughty",
+    "date": "1834",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/departure_for_the_hunt_in_the_pontine_marshes_2004.38.1.jpg",
+    "title": "Departure for the Hunt in the Pontine Marshes",
+    "artist": "Horace Vernet",
+    "date": "1833",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/view_of_the_delaware_near_philadelphia_2015.19.80.jpg",
+    "title": "View of the Delaware near Philadelphia",
+    "artist": "Thomas Birch",
+    "date": "1831",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/a_longshoreman_2015.19.238.jpg",
+    "title": "A Longshoreman",
+    "artist": "John George Brown",
+    "date": "n.d.",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/swiss_landscape_2003.41.1.jpg",
+    "title": "Swiss Landscape",
+    "artist": "Alexandre Calame",
+    "date": "c. 1830",
+    "medium": "Oil on paper on canvas"
+  },
+  {
+    "src": "paintings/anonymous_woman_1953.5.85.jpg",
+    "title": "Anonymous Woman",
+    "artist": "American 19th Century",
+    "date": "c. 1830",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/the_church_of_san_trovaso_venice_2004.166.24.jpg",
+    "title": "The Church of San Trovaso, Venice",
+    "artist": "Jules-Romain Joyant",
+    "date": "c. 1830",
+    "medium": "Oil on paper on canvas"
+  },
+  {
+    "src": "paintings/mound_of_cherries_2018.44.2.jpg",
+    "title": "Mound of Cherries",
+    "artist": "William Mason Brown",
+    "date": "n.d.",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/sunrise_in_the_catskills_1989.24.1.jpg",
+    "title": "Sunrise in the Catskills",
+    "artist": "Thomas Cole",
+    "date": "1826",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/the_grand_canal_2001.87.1.jpg",
+    "title": "The Grand Canal",
+    "artist": "Richard Parkes Bonington",
+    "date": "1826/1827",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/village_on_the_island_of_ischia_2004.166.30.jpg",
+    "title": "Village on the Island of Ischia",
+    "artist": "Sébastien-Louis-Guillaume Norblin de la Gourdaine",
+    "date": "c. 1826",
+    "medium": "Oil on paper on canvas"
+  },
+  {
+    "src": "paintings/storm_tossed_frigate_1969.11.1.jpg",
+    "title": "Storm-Tossed Frigate",
+    "artist": "Thomas Chambers",
+    "date": "mid 19th century",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/northern_landscape_spring_2004.113.1.jpg",
+    "title": "Northern Landscape, Spring",
+    "artist": "Caspar David Friedrich",
+    "date": "c. 1825",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/lake_george_and_the_village_of_caldwell_1966.13.1.jpg",
+    "title": "Lake George and the Village of Caldwell",
+    "artist": "Thomas Chambers",
+    "date": "mid 19th century",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/salisbury_cathedral_from_lower_marsh_close_1937.1.108.jpg",
+    "title": "Salisbury Cathedral from Lower Marsh Close",
+    "artist": "John Constable",
+    "date": "1820",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/view_of_a_villa_pizzofalcone_naples_1997.102.1.jpg",
+    "title": "View of a Villa, Pizzofalcone, Naples",
+    "artist": "Lancelot-Théodore Turpin de Crissé",
+    "date": "c. 1819",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/amsterdam_street_scene_1970.26.1.jpg",
+    "title": "Amsterdam Street Scene",
+    "artist": "Adrianus Eversen",
+    "date": "",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/mishap_at_the_ford_2015.19.83.jpg",
+    "title": "Mishap at the Ford",
+    "artist": "Alvan T. Fisher",
+    "date": "1818",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/peaches_grapes_and_apples_2018.44.18.jpg",
+    "title": "Peaches, Grapes, and Apples",
+    "artist": "Severin Roesen",
+    "date": "n.d.",
+    "medium": "Oil on wood"
+  },
+  {
+    "src": "paintings/view_of_the_cloaca_maxima_rome_2004.75.1.jpg",
+    "title": "View of the Cloaca Maxima, Rome",
+    "artist": "Christoffer Wilhelm Eckersberg",
+    "date": "1814",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/senora_sabasa_garcia_1937.1.88.jpg",
+    "title": "Señora Sabasa Garcia",
+    "artist": "Francisco Goya",
+    "date": "c. 1806/1811",
+    "medium": "Oil on canvas"
+  },
+  {
+    "src": "paintings/view_near_naples_1998.21.1.jpg",
+    "title": "View near Naples",
+    "artist": "Simon Denis",
+    "date": "c. 1806",
+    "medium": "Oil on paper on canvas"
+  }
+]

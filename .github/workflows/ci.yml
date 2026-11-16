@@ -1,0 +1,29 @@
+name: CI Build & Smoke Test
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild and Visual Studio Tools to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Binaries
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+
+      - name: Run Smoke Tests
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File tests\smoke.ps1

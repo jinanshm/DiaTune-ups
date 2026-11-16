@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set SEE_MASK_NOZONECHECKS=1
 set "CLI=%~dp0cli\diatweaks.ps1"
 
 if not exist "%CLI%" (

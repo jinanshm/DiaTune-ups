@@ -1,0 +1,94 @@
+name: Release Dia Tune-ups
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release (e.g. v1.1.0)'
+        required: true
+        default: 'v1.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add MSBuild and Visual Studio Tools to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Dia Tune-ups Binaries
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+
+      - name: Run Smoke Tests
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File tests\smoke.ps1
+
+      - name: Determine Version
+        id: get_version
+        shell: powershell
+        run: |
+          $ver = "${{ github.ref_name }}"
+          if (-not $ver -or $ver -eq "master") {
+            $ver = "${{ github.event.inputs.tag_name }}"
+          }
+          if (-not $ver) { $ver = "v1.1.0" }
+          Write-Host "Releasing version: $ver"
+          "version=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Package Release ZIP
+        shell: powershell
+        run: |
+          $ver = "${{ steps.get_version.outputs.version }}"
+          $zipName = "DiaTuneups-Windows-$ver.zip"
+          $distDir = "dist\DiaTuneups"
+          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+
+          # Copy binaries
+          Copy-Item -Path "bin" -Destination "$distDir\bin" -Recurse -Force
+          # Copy CLI and scripts
+          Copy-Item -Path "cli" -Destination "$distDir\cli" -Recurse -Force
+          Copy-Item -Path "scripts" -Destination "$distDir\scripts" -Recurse -Force
+          Copy-Item -Path "assets" -Destination "$distDir\assets" -Recurse -Force
+
+          # Copy root files
+          Copy-Item -Path "diatweaks.cmd" -Destination "$distDir\" -Force
+          Copy-Item -Path "patches.json" -Destination "$distDir\" -Force
+          Copy-Item -Path "paintings.json" -Destination "$distDir\" -Force
+          Copy-Item -Path "changelog.json" -Destination "$distDir\" -Force
+          Copy-Item -Path "README.md" -Destination "$distDir\" -Force
+          Copy-Item -Path "CHANGELOG.md" -Destination "$distDir\" -Force
+
+          Compress-Archive -Path "$distDir\*" -DestinationPath $zipName -Force
+          Write-Host "Created archive: $zipName"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: "Dia Tune-ups ${{ steps.get_version.outputs.version }}"
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+          files: |
+            DiaTuneups-Windows-*.zip
+            bin/diatweaks-xaml.dll
+            bin/diatweaks-agent.exe
+            bin/diatweaks-inject.exe
+            changelog.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

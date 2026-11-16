@@ -1,0 +1,4 @@
+LIBRARY diatweaks-xaml
+EXPORTS
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE

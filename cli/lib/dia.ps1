@@ -25,22 +25,50 @@ function Get-DiaPackage {
 
 function Get-DiaInfo {
     $package = Get-DiaPackage
-    if (-not $package) { return $null }
+    if ($package) {
+        $exe = Join-Path $package.InstallLocation 'Dia.exe'
+        $version = $package.Version.ToString()
+        if (-not $version -and (Test-Path -LiteralPath $exe)) {
+            $version = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion
+        }
 
-    $exe = Join-Path $package.InstallLocation 'Dia.exe'
-    $version = $package.Version.ToString()
-    if (-not $version -and (Test-Path -LiteralPath $exe)) {
-        $version = (Get-Item -LiteralPath $exe).VersionInfo.FileVersion
+        return [pscustomobject]@{
+            Name              = $package.Name
+            Version           = $version
+            PackageFullName   = $package.PackageFullName
+            PackageFamilyName = $package.PackageFamilyName
+            InstallLocation   = $package.InstallLocation
+            ExePath           = $exe
+        }
     }
 
-    return [pscustomobject]@{
-        Name             = $package.Name
-        Version          = $version
-        PackageFullName  = $package.PackageFullName
-        PackageFamilyName = $package.PackageFamilyName
-        InstallLocation  = $package.InstallLocation
-        ExePath          = $exe
-    }
+    # Fallback to HKCU AppModel repository when CIM/Get-AppxPackage is restricted
+    try {
+        $regBase = "HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages"
+        $pkgKey = Get-ChildItem $regBase -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -like "*$($script:DiaPackageName)*" } |
+            Select-Object -First 1
+        if ($pkgKey) {
+            $props = Get-ItemProperty -Path $pkgKey.PSPath -ErrorAction SilentlyContinue
+            if ($props -and $props.PackageRootFolder) {
+                $exe = Join-Path $props.PackageRootFolder 'Dia.exe'
+                $pkgFullName = $props.PackageID
+                $parts = $pkgFullName -split '_'
+                $version = if ($parts.Count -ge 2) { $parts[1] } else { '' }
+                $family = if ($parts.Count -ge 5) { "$($parts[0])_$($parts[4])" } else { "$($script:DiaPackageName)_ttt1ap7aakyb4" }
+                return [pscustomobject]@{
+                    Name              = $script:DiaPackageName
+                    Version           = $version
+                    PackageFullName   = $pkgFullName
+                    PackageFamilyName = $family
+                    InstallLocation   = $props.PackageRootFolder
+                    ExePath           = $exe
+                }
+            }
+        }
+    } catch {}
+
+    return $null
 }
 
 <#
@@ -90,7 +118,7 @@ function Get-DiaWindows {
     if ($processIds.Count -eq 0) { return @() }
 
     $owned = @(Get-TopLevelWindows | Where-Object { $processIds -contains $_.ProcessId })
-    $main = @($owned | Where-Object { $_.ClassName -eq $script:DiaWindowClass })
+    $main = @($owned | Where-Object { $_.ClassName -eq $script:DiaWindowClass -and $_.Width -ge 400 -and $_.Height -ge 300 })
     if ($main.Count -gt 0) { return $main }
 
     return @($owned | Where-Object {
@@ -101,14 +129,22 @@ function Get-DiaWindows {
 <#
 .SYNOPSIS
     Starts Dia through its package identity.
+
+.DESCRIPTION
+    The Developer mode tweak needs Chromium's DevTools, and Chromium only
+    offers them when the browser is started with a debugging port. When that
+    tweak is on, Dia is started with the port instead of through the shell.
 #>
 function Start-Dia {
-    $appId = Get-DiaAppId
-    if ($appId) {
-        # The shell resolves shell:AppsFolder, which keeps Dia's package
-        # identity (and therefore its profile) intact.
-        Start-Process -FilePath 'explorer.exe' -ArgumentList @("shell:AppsFolder\$appId") | Out-Null
-        return
+    # The debugging port Chromium's DevTools listen on.
+    $debugPort = 9222
+
+    $needsDebugPort = $false
+    try {
+        $state = Read-State
+        $needsDebugPort = [bool]$state['developerMode']
+    } catch {
+        $needsDebugPort = $false
     }
 
     $info = Get-DiaInfo
@@ -118,6 +154,53 @@ function Start-Dia {
     if (-not (Test-Path -LiteralPath $info.ExePath)) {
         throw "Dia's executable is missing: $($info.ExePath)"
     }
+
+    if ($needsDebugPort) {
+        $appId = Get-DiaAppId
+        if ($appId) {
+            $actSrc = @'
+using System;
+using System.Runtime.InteropServices;
+[ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAppActivationMgr {
+    [PreserveSig]
+    int ActivateApplication([MarshalAs(UnmanagedType.LPWStr)] string appUserModelId, [MarshalAs(UnmanagedType.LPWStr)] string arguments, uint options, out uint processId);
+}
+[ComImport, Guid("45ba127d-10a8-46ea-8ab7-56ea9078943c")]
+class AppActivationMgrClass { }
+public static class AppActivator {
+    public static uint Activate(string appId, string args) {
+        var mgr = (IAppActivationMgr)new AppActivationMgrClass();
+        uint pid;
+        int hr = mgr.ActivateApplication(appId, args, 0, out pid);
+        if (hr != 0) Marshal.ThrowExceptionForHR(hr);
+        return pid;
+    }
+}
+'@
+            try {
+                Add-Type -TypeDefinition $actSrc -Language CSharp -ErrorAction SilentlyContinue
+                [AppActivator]::Activate($appId, "--remote-debugging-port=$debugPort --remote-allow-origins=*") | Out-Null
+                return
+            } catch {
+                # Fall back to direct launch if COM activation fails
+            }
+        }
+        Start-Process -FilePath $info.ExePath -ArgumentList @(
+            "--remote-debugging-port=$debugPort",
+            '--remote-allow-origins=*'
+        ) | Out-Null
+        return
+    }
+
+    $appId = Get-DiaAppId
+    if ($appId) {
+        # The shell resolves shell:AppsFolder, which keeps Dia's package
+        # identity (and therefore its profile) intact.
+        Start-Process -FilePath 'explorer.exe' -ArgumentList @("shell:AppsFolder\$appId") | Out-Null
+        return
+    }
+
     Start-Process -FilePath $info.ExePath | Out-Null
 }
 

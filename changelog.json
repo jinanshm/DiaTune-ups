@@ -1,0 +1,21 @@
+{
+  "versions": [
+    {
+      "version": "1.1.0",
+      "date": "2026-11-15",
+      "title": "Dia Tune-ups v1.1.0",
+      "changes": [
+        "In-App Tune-ups Settings: Full settings page inside Dia with live toggle switches and preset picker.",
+        "Developer Mode Toolbar: Arc-style dev toolbar with responsive inspect, console, network, and extension tools.",
+        "Peek Link Preview: Preview links in floating cards with customizable shortcuts (Shift+click, Hold, Ctrl+Shift, Alt) and animations (Genie, Ease, Zoom).",
+        "Tactile Sidebar Textures: Procedural Sand, Fine Grain, Denim weave, and Paper fiber textures with intensity and softness sliders.",
+        "Window Backdrop Materials: Native Windows 11 Mica, Mica Alt, and Acrylic backdrops with edge-to-edge frameless geometry.",
+        "Daily Painting Wallpaper: Automatic daily fine-art wallpaper on the New Tab page with curated artwork metadata.",
+        "Segoe UI Variable Typography: Optional toggle to force Windows 11 Segoe UI Variable font for UI and web content.",
+        "Clean Search Box: Streamlined single-line New Tab and Command Bar (Ctrl+T / Ctrl+L).",
+        "Profile Emoji: Display custom emojis instead of space dots in the space switcher.",
+        "Update Checker & Changelog: In-panel update checking, release notes viewer, and Buy Me a Coffee support card."
+      ]
+    }
+  ]
+}

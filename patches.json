@@ -7,7 +7,6 @@
       "order": 10,
       "title": "Edge-to-edge window",
       "detail": "Remove the window's frame border so the page meets the window's edges.",
-      "defaultOn": true,
       "supported": true,
       "mechanism": "border"
     },
@@ -15,102 +14,338 @@
       "key": "squareSidebarCorners",
       "order": 20,
       "title": "Square window corners",
-      "detail": "Square the window's corners instead of the rounded corners Windows 11 draws.",
-      "defaultOn": true,
-      "requires": "edgeToEdge",
+      "detail": "Square Dia's rounded UI corners around the page and clip page corners.",
       "supported": true,
-      "mechanism": "corners"
+      "mechanism": "xaml"
     },
     {
       "key": "hideToolbar",
       "order": 30,
       "title": "Hide toolbar",
-      "detail": "Not available on Windows. Dia's toolbar is compiled XAML inside a detached content island, and Windows gives no supported way to reach it from outside.",
-      "supported": false
+      "detail": "Hide the toolbar row: the address field, navigation buttons and extensions. The window controls stay, and the page moves up into the space.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "toolbarColor",
+      "order": 35,
+      "title": "Toolbar color",
+      "detail": "Make the toolbar transparent so the sidebar color or window backdrop material shows through.",
+      "disabledBy": "hideToolbar",
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "revealToolbarOnHover",
       "order": 40,
       "title": "Reveal toolbar on hover",
-      "detail": "Not available on Windows, because it builds on Hide toolbar.",
+      "detail": "Reveals the toolbar when moving the pointer to the top edge of the window.",
       "requires": "hideToolbar",
-      "supported": false
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "showToolbarWithSidebar",
       "order": 45,
       "title": "Show toolbar with the sidebar",
-      "detail": "Not available on Windows, because it builds on Hide toolbar.",
+      "detail": "Keeps the toolbar showing when the sidebar is open.",
       "requires": "hideToolbar",
-      "supported": false
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "showToolbarOnNewTab",
       "order": 47,
       "title": "Show toolbar on new tab pages",
-      "detail": "Not available on Windows, because it builds on Hide toolbar.",
+      "detail": "Keeps the toolbar showing when viewing a new tab or start page.",
       "requires": "hideToolbar",
-      "supported": false
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "showAddressField",
       "order": 48,
       "title": "Always show address field",
-      "detail": "Not available on Windows. The address field is compiled XAML with no reachable runtime tree.",
+      "detail": "Keep the address field's bookmark and site buttons showing without hovering, with a subtle field background.",
       "disabledBy": "hideToolbar",
-      "supported": false
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "hideSidebarButton",
       "order": 50,
       "title": "Hide sidebar button",
-      "detail": "Not available on Windows. The sidebar toggle is a XAML element in Dia's navigation bar, which can't be reached at runtime.",
+      "detail": "Hide the sidebar toggle at the top-left of the toolbar.",
       "disabledBy": "hideToolbar",
-      "supported": false
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "peek",
+      "order": 51,
+      "title": "Peek link preview",
+      "detail": "Hold on a link or click with modifier to preview it in a card without leaving the tab.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "peekTrigger",
+      "order": 52,
+      "title": "Peek trigger",
+      "detail": "How a Peek opens: Shift+click, hold on a link, Ctrl+Shift+click, or Alt+click.",
+      "type": "choice",
+      "default": "shift",
+      "options": [
+        { "value": "shift", "label": "Shift+click" },
+        { "value": "hold", "label": "Hold on a link" },
+        { "value": "ctrlShift", "label": "Ctrl+Shift+click" },
+        { "value": "alt", "label": "Alt+click" }
+      ],
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "peekAnimation",
+      "order": 53,
+      "title": "Peek animation",
+      "detail": "How the card flies in and out: Genie, Ease In/Out, or Zoom.",
+      "type": "choice",
+      "default": "genie",
+      "options": [
+        { "value": "genie", "label": "Genie" },
+        { "value": "easeInOut", "label": "Ease In/Out" },
+        { "value": "zoom", "label": "Zoom" }
+      ],
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hideTrafficLights",
+      "order": 55,
+      "title": "Hide window controls",
+      "detail": "Hide the minimize, maximize and close buttons in the title bar. Alt+F4 and the window menu still work.",
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "hideChatButton",
       "order": 60,
       "title": "Hide Chat button",
-      "detail": "Not available on Windows. The Chat button is a XAML element in Dia's navigation bar, which can't be reached at runtime.",
+      "detail": "Hide the Chat button at the top-right of the toolbar.",
       "disabledBy": "hideToolbar",
-      "supported": false
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hidePersonalizeButton",
+      "order": 65,
+      "title": "Hide Personalize button",
+      "detail": "Hide the Personalize button when Dia shows it in the toolbar.",
+      "disabledBy": "hideToolbar",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hideUpgradeBanner",
+      "order": 66,
+      "title": "Hide upgrade banner",
+      "detail": "Hide the Chat usage and upgrade card under the command bar when Dia shows it.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hideTabSearchButton",
+      "order": 72,
+      "title": "Hide tab search button",
+      "detail": "Hide the overflow / search tabs button in the window drag header.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "profileEmoji",
+      "order": 73,
+      "title": "Profile emoji",
+      "detail": "Show an emoji in place of each space's dot in the space switcher. Choose them in Settings › Profiles.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "sidebarGrain",
+      "order": 74,
+      "title": "Sidebar grain",
+      "detail": "Add procedural tactile texture (sand, grain, denim, paper) behind the sidebar and tabs.",
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "hideChatsButton",
-      "order": 70,
+      "order": 75,
       "title": "Hide Chats button",
-      "detail": "Not available on Windows. The Chats button is drawn by Dia's own XAML sidebar.",
+      "detail": "Dia for Windows does not have a separate sidebar Chats button (macOS specific layout).",
+      "supported": false
+    },
+    {
+      "key": "compactSidebarHeader",
+      "order": 76,
+      "title": "Compact sidebar header",
+      "detail": "The Windows sidebar header uses a different layout and does not expose a separate row to trim.",
       "supported": false
     },
     {
       "key": "hideRecentTabsButton",
       "order": 80,
       "title": "Hide recent tabs button",
-      "detail": "Not available on Windows. The recent tabs button is drawn by Dia's own XAML sidebar.",
+      "detail": "Dia for Windows does not have a separate recent tabs button in the sidebar.",
       "supported": false
+    },
+    {
+      "key": "pinnedExtensions",
+      "order": 84,
+      "title": "Pinned extensions shown",
+      "detail": "Show up to 6, 8, 10, 12 or 16 pinned extensions by the address bar instead of Dia's 4.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hideLoadingAnimation",
+      "order": 85,
+      "title": "Hide page loading animation",
+      "detail": "Hide the loading indicator line in the address bar.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hidePinnedTabBorder",
+      "order": 86,
+      "title": "Hide pinned tab border",
+      "detail": "Remove the border outline around pinned tabs.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hideTabHoverCard",
+      "order": 87,
+      "title": "Hide tab hover card",
+      "detail": "Stops the preview card from popping up when hovering over open or pinned tabs.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "translucentSidebar",
+      "order": 88,
+      "title": "Translucent sidebar",
+      "detail": "Make the sidebar translucent.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "windowMaterial",
+      "order": 89,
+      "title": "Window material",
+      "detail": "Apply Mica, Mica Alt or Acrylic backdrop material behind the tabs and sidebar.",
+      "supported": true,
+      "mechanism": "xaml"
     },
     {
       "key": "keepWindowsActive",
       "order": 90,
       "title": "Keep the display awake",
-      "detail": "Stop the screen from sleeping while Dia is open. This is the Windows adaptation of the macOS tweak, which kept an unfocused window looking active.",
+      "detail": "Stop the screen from sleeping while Dia is open.",
       "supported": true,
       "mechanism": "awake"
+    },
+    {
+      "key": "dontPopUpDownloads",
+      "order": 91,
+      "title": "Don't pop up downloads",
+      "detail": "Stops the downloads list from opening by itself for each download.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hideNewTabLogo",
+      "order": 93,
+      "title": "Hide new tab logo",
+      "detail": "The new-tab logo is drawn inside Dia's page canvas rather than as an individual XAML element.",
+      "supported": false
+    },
+    {
+      "key": "cleanSearchBox",
+      "order": 94,
+      "title": "Clean search box",
+      "detail": "Streamline the New Tab and Command Bar (Ctrl+L / Ctrl+T) into a clean single-line input.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "newTabPainting",
+      "order": 96,
+      "title": "Daily painting wallpaper",
+      "detail": "Display the Daily Brief's painting of the day as the New Tab page wallpaper.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "turnOffAI",
+      "order": 97,
+      "title": "Turn off AI",
+      "detail": "Dia's AI features are controlled inside the app rather than by one XAML surface. Hide Chat button removes the main AI entry point.",
+      "supported": false
     },
     {
       "key": "passkeys",
       "order": 100,
       "title": "Allow iCloud passkeys",
-      "detail": "Not available on Windows. It relays passkey requests to Apple Passwords, which only exists on Apple platforms. Windows uses Windows Hello instead.",
+      "detail": "Not available on Windows. Relays passkey requests to Apple Passwords (macOS-only).",
       "supported": false
     },
     {
       "key": "icloudPasswords",
       "order": 101,
       "title": "Allow iCloud Passwords",
-      "detail": "Not available on Windows. It bridges to Apple's iCloud Passwords extension and native messaging host, which are macOS-only.",
+      "detail": "Not available on Windows. Bridges to Apple's iCloud Passwords extension (macOS-only).",
       "supported": false
+    },
+    {
+      "key": "developerMode",
+      "order": 104,
+      "title": "Developer Mode Toolbar",
+      "detail": "Adds a Developer Mode toggle to the site settings menu and the tab menu. Sites in developer mode get a marked tab in the sidebar and a developer toolbar with console, network, inspector, capture and extension tools.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "developerModeLocalhost",
+      "order": 104.5,
+      "title": "Developer mode for localhost",
+      "detail": "Treat localhost and 127.0.0.1 as being in developer mode, without switching each site on by hand.",
+      "defaultOn": true,
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "hideLinkAddress",
+      "order": 105,
+      "title": "Hide link address",
+      "detail": "Hide the hover link URL preview bubble at the bottom corner of the window.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "normalLaunch",
+      "order": 106,
+      "title": "Patch Dia however it's opened",
+      "detail": "Keep tweaks active whenever Dia opens from any shortcut, pinned icon, or link.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "segoeUiVariable",
+      "order": 107,
+      "title": "Force Segoe UI Variable font",
+      "detail": "Use Windows 11's Segoe UI Variable font for web pages and UI instead of system-ui.",
+      "supported": true,
+      "mechanism": "xaml"
     }
   ]
 }
