@@ -29,5 +29,6 @@ if (-not $updated) {
     exit 1
 }
 
-Write-Host "Launching Dia with updated tweaks..."
-powershell -ExecutionPolicy Bypass -File "$root\cli\diatweaks.ps1" launch
+Write-Host "Launching Dia with updated tweaks (no console window)..."
+$psExe = if (Get-Command 'pwsh' -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+& $psExe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$root\cli\diatweaks.ps1" launch

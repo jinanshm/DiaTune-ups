@@ -42,6 +42,12 @@ std::wstring CurrentOrigin();
 // Whether the currently active tab has developer mode turned on.
 bool ActiveTabInDevMode();
 
+// True while our developer toolbar strip is actually present in Dia's tree.
+// Used by the engine to keep the trailing toolbar opaque: the page tracker can
+// momentarily disagree about the active tab, but the toolbar itself is the
+// reliable signal that the developer UI should stay visible.
+bool ToolbarActive();
+
 }  // namespace DevMode
 
 // Returns whether the current tab in Dia is the New Tab page

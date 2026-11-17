@@ -37,7 +37,7 @@ You can configure every tweak directly inside Dia's native Settings window:
    - **Toggle any tweak**: Window geometry, toolbar visibility, toolbar icons, sidebar textures, link previews, typography, and wallpaper.
    - **Choose Materials**: Switch backdrop materials (*Mica*, *Acrylic*, *Mica Alt*) and textures (*Sand*, *Fine grain*, *Denim*, *Paper*) with instant live feedback.
    - **Tune Material Translucency**: A **Translucency** slider under *Window material* sets how much the space colour fades out while the sidebar is open, from the full colour (0%) to just the backdrop (100%).
-   - **Update Dia Tune-ups**: Check for the latest release and updates directly from the panel.
+   - **Update Dia Tune-ups**: One click checks GitHub and installs the newest build. It compares the local git commit with the latest commit on `master`, so it catches up to every build — even ones with no published release.
    - **View Changelog**: Expand the in-panel changelog card to inspect version release notes loaded from `changelog.json`.
    - **Support Developer**: One-click button to support continued open-source development via Buy Me a Coffee.
    - **Turn All Off / Open Folder**: Quick reset and instant access to the `%LOCALAPPDATA%\DiaTweaks` data directory in File Explorer.
@@ -56,7 +56,7 @@ All changes made in the Settings tab update Dia instantly in real-time and stay 
 | `windowMaterial` | Window material | Supported | Applies backdrop materials behind tabs and sidebar: `default`, `mica`, `acrylic`, `micaalt`, or `none`. |
 | `materialTransparency` | Window material translucency | Supported | 0–100%: how much the space colour fades out while the sidebar is open. 100% leaves only the backdrop; hidden sidebar keeps the full colour. Set from the Tune-ups slider. |
 | `keepWindowsActive` | Keep display awake | Supported | Keeps the display and system awake while Dia is running. |
-| `normalLaunch` | Patch Dia however it's opened | Supported | Keeps tweaks active whenever Dia opens from any shortcut, pinned icon, or link. |
+| `normalLaunch` | Patch Dia however it's opened | Supported | **On by default.** Keeps tweaks active whenever Dia opens from any shortcut, pinned icon, or link. |
 
 ### 2. Toolbar & Visibility
 | Tweak Key | Title | Windows Status | Description |
@@ -130,6 +130,11 @@ Run `diatweaks` via `diatweaks.cmd` in the repository root (or add the folder to
 ```powershell
 diatweaks <command> [tweak...] [-y]
 ```
+
+> **No CMD window:** For a silent launch/apply (no console window flashing), use
+> `diatweaks.vbs` instead, or point a shortcut at it:
+> `wscript.exe "C:\path\to\DiaTweaks-Windows\diatweaks.vbs" launch`. The in-panel
+> updater also runs entirely hidden.
 
 ### Available Commands
 

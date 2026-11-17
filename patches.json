@@ -336,6 +336,7 @@
       "order": 106,
       "title": "Patch Dia however it's opened",
       "detail": "Keep tweaks active whenever Dia opens from any shortcut, pinned icon, or link.",
+      "defaultOn": true,
       "supported": true,
       "mechanism": "xaml"
     },

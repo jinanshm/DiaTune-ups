@@ -476,7 +476,7 @@ struct TweakCfg {
     bool dontPopUpDownloads = false;
     bool squareSidebarCorners = false;
     bool keepWindowsActive = false;
-    bool normalLaunch = false;
+    bool normalLaunch = true;
     bool segoeUiVariable = false;
     bool notoEmoji = false;
     bool developerMode = false;
@@ -595,7 +595,7 @@ static void ReadConfig() {
     g_cfg.keepWindowsActive =
         GetPrivateProfileIntW(L"tweaks", L"keepWindowsActive", 0, g_configPath) != 0;
     g_cfg.normalLaunch =
-        GetPrivateProfileIntW(L"tweaks", L"normalLaunch", 0, g_configPath) != 0;
+        GetPrivateProfileIntW(L"tweaks", L"normalLaunch", 1, g_configPath) != 0;
     g_cfg.segoeUiVariable =
         GetPrivateProfileIntW(L"tweaks", L"segoeUiVariable", 0, g_configPath) != 0;
     g_cfg.notoEmoji =
@@ -1152,7 +1152,11 @@ static void UpdateTrailingStack(InstanceHandle handle) {
     auto element = object.try_as<mux::FrameworkElement>();
     if (!element) return;
 
-    bool devModeActive = DevMode::ActiveTabInDevMode();
+    // The developer toolbar lives in this trailing stack. Keep it opaque while
+    // that toolbar is present, even if the page tracker briefly disagrees about
+    // the active tab - otherwise Dia's hover-only opacity binding is restored
+    // and the developer icons seem to appear only while hovering the toolbar.
+    bool devModeActive = DevMode::ActiveTabInDevMode() || DevMode::ToolbarActive();
     bool on = (g_showAddressField.load() && !g_hideToolbar.load()) || devModeActive;
 
     std::lock_guard<std::mutex> lock(g_stateLock);
@@ -6836,57 +6840,37 @@ struct RemoteVersionInfo {
     std::wstring title;
 };
 
-static RemoteVersionInfo CheckForUpdatesOnline() {
-    RemoteVersionInfo info;
-    HINTERNET hSession = WinHttpOpen(L"DiaTweaks-Updater/1.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) return info;
-
-    HINTERNET hConnect = WinHttpConnect(hSession, L"raw.githubusercontent.com", INTERNET_DEFAULT_HTTPS_PORT, 0);
+// Does one HTTPS GET and returns the response body on HTTP 200.
+static bool HttpGetBody(const wchar_t* host, const wchar_t* path, std::string& body) {
+    HINTERNET hSession = WinHttpOpen(L"DiaTweaks-Updater/1.2", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!hSession) return false;
+    bool ok = false;
+    HINTERNET hConnect = WinHttpConnect(hSession, host, INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (hConnect) {
-        HINTERNET hReq = WinHttpOpenRequest(hConnect, L"GET", L"/jinanshm/DiaTweaks-Win/master/changelog.json", nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
+        HINTERNET hReq = WinHttpOpenRequest(hConnect, L"GET", path, nullptr, WINHTTP_NO_REFERER,
+                                            WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
         if (hReq) {
-            WinHttpSetTimeouts(hReq, 3500, 3500, 3500, 3500);
-            if (WinHttpSendRequest(hReq, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+            WinHttpSetTimeouts(hReq, 4000, 4000, 6000, 6000);
+            const wchar_t* headers =
+                L"User-Agent: DiaTweaks-Updater\r\nAccept: application/vnd.github+json\r\n";
+            if (WinHttpSendRequest(hReq, headers, static_cast<DWORD>(wcslen(headers)),
+                                   WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
                 WinHttpReceiveResponse(hReq, nullptr)) {
                 DWORD status = 0, statusSize = sizeof(status);
-                WinHttpQueryHeaders(hReq, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &statusSize, nullptr);
+                WinHttpQueryHeaders(hReq, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                                    nullptr, &status, &statusSize, nullptr);
                 if (status == 200) {
-                    std::string body;
                     DWORD avail = 0;
                     while (WinHttpQueryDataAvailable(hReq, &avail) && avail > 0) {
                         std::string chunk(avail, '\0');
                         DWORD read = 0;
-                        if (WinHttpReadData(hReq, chunk.data(), avail, &read) && read > 0) {
+                        if (WinHttpReadData(hReq, chunk.data(), avail, &read) && read > 0)
                             body.append(chunk.data(), read);
-                        } else break;
+                        else
+                            break;
                     }
-                    if (!body.empty()) {
-                        int wlen = MultiByteToWideChar(CP_UTF8, 0, body.data(), (int)body.size(), nullptr, 0);
-                        if (wlen > 0) {
-                            std::wstring jsonStr(wlen, L'\0');
-                            MultiByteToWideChar(CP_UTF8, 0, body.data(), (int)body.size(), jsonStr.data(), wlen);
-                            winrt::Windows::Data::Json::JsonObject root;
-                            if (winrt::Windows::Data::Json::JsonObject::TryParse(winrt::hstring(jsonStr), root)) {
-                                if (root.HasKey(L"versions")) {
-                                    auto arr = root.GetNamedArray(L"versions");
-                                    if (arr.Size() > 0) {
-                                        auto first = arr.GetObjectAt(0);
-                                        info.version = std::wstring(first.GetNamedString(L"version", L""));
-                                        info.date = std::wstring(first.GetNamedString(L"date", L""));
-                                        info.title = std::wstring(first.GetNamedString(L"title", L""));
-                                        info.success = true;
-
-                                        int curA = 1, curB = 1, curC = 0;
-                                        int remA = 0, remB = 0, remC = 0;
-                                        swscanf_s(info.version.c_str(), L"%d.%d.%d", &remA, &remB, &remC);
-                                        if (remA > curA || (remA == curA && remB > curB) || (remA == curA && remB == curB && remC > curC)) {
-                                            info.isNewer = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    ok = !body.empty();
                 }
             }
             WinHttpCloseHandle(hReq);
@@ -6894,7 +6878,158 @@ static RemoteVersionInfo CheckForUpdatesOnline() {
         WinHttpCloseHandle(hConnect);
     }
     WinHttpCloseHandle(hSession);
+    return ok;
+}
+
+// The DLL lives in <repo>\bin; the repo root is the parent of that folder.
+static std::wstring RepoRoot() {
+    wchar_t modulePath[MAX_PATH]{};
+    if (!GetModuleFileNameW(g_module, modulePath, MAX_PATH)) return {};
+    std::wstring p = modulePath;
+    size_t binSlash = p.find_last_of(L'\\');
+    if (binSlash == std::wstring::npos) return {};
+    std::wstring bin = p.substr(0, binSlash);
+    size_t repoSlash = bin.find_last_of(L'\\');
+    if (repoSlash == std::wstring::npos) return {};
+    return bin.substr(0, repoSlash);
+}
+
+// Reads the checked-out commit from .git so we can compare it with GitHub. The
+// updater installs by `git pull`, so every push is a new build - there is no
+// need for a release tag or a version bump to detect it.
+static std::wstring LocalHeadSha() {
+    auto readTrimmed = [](const std::wstring& path) -> std::string {
+        HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (f == INVALID_HANDLE_VALUE) return {};
+        DWORD size = GetFileSize(f, nullptr);
+        if (size == INVALID_FILE_SIZE || size > 65536) { CloseHandle(f); return {}; }
+        std::string buf(size, '\0');
+        DWORD read = 0;
+        bool ok = ReadFile(f, buf.data(), size, &read, nullptr) && read > 0;
+        CloseHandle(f);
+        if (!ok) return {};
+        std::string s = buf.substr(0, read);
+        while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ' || s.back() == '\t'))
+            s.pop_back();
+        return s;
+    };
+    auto widen = [](const std::string& s) {
+        int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+        std::wstring out(n > 0 ? n - 1 : 0, L'\0');
+        if (n > 0) MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), n);
+        return out;
+    };
+
+    std::wstring root = RepoRoot();
+    if (root.empty()) return {};
+    std::string head = readTrimmed(root + L"\\.git\\HEAD");
+    if (head.empty()) return {};
+    if (head.rfind("ref:", 0) == 0) {
+        std::string ref = head.substr(4);
+        while (!ref.empty() && ref.front() == ' ') ref.erase(ref.begin());
+        std::string sha = readTrimmed(root + L"\\.git\\" + widen(ref));
+        if (!sha.empty()) return widen(sha);
+        // Loose ref missing (packed): look it up in packed-refs.
+        std::string packed = readTrimmed(root + L"\\.git\\packed-refs");
+        size_t pos = 0;
+        while ((pos = packed.find('\n', pos)) != std::string::npos) {
+            std::string line = packed.substr(0, pos);
+            ++pos;
+            if (line.empty() || line[0] == '#' || line[0] == '^') continue;
+            size_t sp = line.find(' ');
+            if (sp == std::string::npos) continue;
+            if (line.substr(sp + 1) == ref) return widen(line.substr(0, sp));
+        }
+        return {};
+    }
+    return widen(head);
+}
+
+static RemoteVersionInfo CheckChangelogVersion() {
+    RemoteVersionInfo info;
+    std::string body;
+    if (!HttpGetBody(L"raw.githubusercontent.com",
+                     L"/jinanshm/DiaTweaks-Win/master/changelog.json", body))
+        return info;
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, body.data(), (int)body.size(), nullptr, 0);
+    if (wlen <= 0) return info;
+    std::wstring jsonStr(wlen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, body.data(), (int)body.size(), jsonStr.data(), wlen);
+    try {
+        winrt::Windows::Data::Json::JsonObject root;
+        if (winrt::Windows::Data::Json::JsonObject::TryParse(winrt::hstring(jsonStr), root) &&
+            root.HasKey(L"versions")) {
+            auto arr = root.GetNamedArray(L"versions");
+            if (arr.Size() > 0) {
+                auto first = arr.GetObjectAt(0);
+                info.version = std::wstring(first.GetNamedString(L"version", L""));
+                info.date = std::wstring(first.GetNamedString(L"date", L""));
+                info.title = std::wstring(first.GetNamedString(L"title", L""));
+                info.success = true;
+                int curA = 1, curB = 1, curC = 0, remA = 0, remB = 0, remC = 0;
+                swscanf_s(info.version.c_str(), L"%d.%d.%d", &remA, &remB, &remC);
+                info.isNewer = remA > curA || (remA == curA && remB > curB) ||
+                               (remA == curA && remB == curB && remC > curC);
+            }
+        }
+    } catch (...) {}
     return info;
+}
+
+static RemoteVersionInfo CheckForUpdatesOnline() {
+    // Prefer the git commit: GitHub does not publish a release for every build,
+    // but every build is a push to master. Comparing SHAs "catches up" to all of
+    // them, including ones where the hard-coded version was never bumped.
+    std::string body;
+    if (HttpGetBody(L"api.github.com", L"/repos/jinanshm/DiaTweaks-Win/commits/master", body)) {
+        try {
+            int wlen = MultiByteToWideChar(CP_UTF8, 0, body.data(), (int)body.size(), nullptr, 0);
+            if (wlen > 0) {
+                std::wstring jsonStr(wlen, L'\0');
+                MultiByteToWideChar(CP_UTF8, 0, body.data(), (int)body.size(), jsonStr.data(), wlen);
+                winrt::Windows::Data::Json::JsonObject root;
+                if (winrt::Windows::Data::Json::JsonObject::TryParse(winrt::hstring(jsonStr), root)) {
+                    RemoteVersionInfo info;
+                    std::wstring sha = std::wstring(root.GetNamedString(L"sha", L""));
+                    if (!sha.empty()) {
+                        info.version = sha.substr(0, 7);
+                        info.success = true;
+                        if (root.HasKey(L"commit")) {
+                            auto commit = root.GetNamedObject(L"commit");
+                            info.date = std::wstring(commit.GetNamedString(L"date", L""));
+                            if (commit.HasKey(L"message")) {
+                                std::wstring msg = std::wstring(commit.GetNamedString(L"message", L""));
+                                size_t nl = msg.find(L'\n');
+                                info.title = nl == std::wstring::npos ? msg : msg.substr(0, nl);
+                            }
+                            if (commit.HasKey(L"author")) {
+                                auto author = commit.GetNamedObject(L"author");
+                                if (info.date.empty())
+                                    info.date = std::wstring(author.GetNamedString(L"date", L""));
+                            }
+                        }
+                        std::wstring local = LocalHeadSha();
+                        info.isNewer = !local.empty() && local != sha;
+                        if (local.empty()) {
+                            // No local git metadata (e.g. installed from a zip):
+                            // fall back to the changelog version comparison.
+                            RemoteVersionInfo fallback = CheckChangelogVersion();
+                            if (fallback.success) {
+                                info.version = fallback.version;
+                                info.date = fallback.date;
+                                info.title = fallback.title;
+                                info.isNewer = fallback.isNewer;
+                            }
+                        }
+                        return info;
+                    }
+                }
+            }
+        } catch (...) {}
+    }
+    // GitHub API unavailable (offline / rate limited): fall back to changelog.
+    return CheckChangelogVersion();
 }
 
 static mux::FrameworkElement BuildDiaTuneupsSection() {
@@ -6927,7 +7062,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Update Dia Tune-ups");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"Version 1.1.0 • Check for updates to Dia Tune-ups.");
+        d.Text(L"Version 1.1.0 • One click checks GitHub and installs the newest build.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);
@@ -6935,70 +7070,74 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         row.Children().Append(text);
 
         muxc::Button btn;
-        btn.Content(winrt::box_value(L"Check for updates"));
+        btn.Content(winrt::box_value(L"Update Tune-ups"));
         btn.VerticalAlignment(mux::VerticalAlignment::Center);
         btn.Click([btnWeak = winrt::make_weak(btn), descWeak = winrt::make_weak(d)](auto&&, auto&&) {
             auto b = btnWeak.get();
             auto desc = descWeak.get();
             if (!b || !desc) return;
 
-            std::wstring currentBtnText(winrt::unbox_value_or<winrt::hstring>(b.Content(), L""));
-            if (currentBtnText == L"Update now") {
-                b.IsEnabled(false);
-                b.Content(winrt::box_value(L"Updating..."));
-                desc.Text(L"Pulling latest updates and rebuilding... Please wait.");
-
-                auto queue = b.DispatcherQueue();
-                std::thread([btnWeak, descWeak, queue]() {
-                    wchar_t cmdBuf[1024]{};
-                    swprintf_s(cmdBuf, L"powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command \"cd '%s\\..'; git pull origin master; powershell -ExecutionPolicy Bypass -File scripts\\build.ps1 -SkipAgent\"", g_dir);
-                    _wsystem(cmdBuf);
-
-                    if (queue) {
-                        queue.TryEnqueue([btnWeak, descWeak]() {
-                            auto b = btnWeak.get();
-                            auto desc = descWeak.get();
-                            if (b) {
-                                b.Content(winrt::box_value(L"Updated \u2713"));
-                                b.IsEnabled(true);
-                            }
-                            if (desc) {
-                                desc.Text(L"Dia Tune-ups updated successfully! Please restart Dia to apply.");
-                            }
-                        });
-                    }
-                }).detach();
-                return;
-            }
-
             b.IsEnabled(false);
             b.Content(winrt::box_value(L"Checking..."));
-            desc.Text(L"Checking GitHub for updates...");
-
+            desc.Text(L"Checking GitHub for a new build...");
             auto queue = b.DispatcherQueue();
+
+            // One click: check, report what was found, then pull + rebuild.
+            // All child processes are launched hidden, so no CMD window pops up.
             std::thread([btnWeak, descWeak, queue]() {
                 RemoteVersionInfo info = CheckForUpdatesOnline();
                 if (queue) {
                     queue.TryEnqueue([btnWeak, descWeak, info]() {
-                        auto b = btnWeak.get();
-                        auto desc = descWeak.get();
-                        if (!b || !desc) return;
-                        b.IsEnabled(true);
-
-                        if (info.success) {
-                            if (info.isNewer) {
-                                std::wstring msg = L"Update available: v" + info.version;
-                                if (!info.date.empty()) msg += L" (" + info.date + L")";
-                                if (!info.title.empty()) msg += L" - " + info.title;
-                                desc.Text(msg);
-                                b.Content(winrt::box_value(L"Update now"));
-                            } else {
-                                desc.Text(L"You're up to date! Dia Tune-ups v1.1.0 is currently the latest version. Checked just now.");
-                                b.Content(winrt::box_value(L"Up to date \u2713"));
-                            }
+                        auto bb = btnWeak.get();
+                        auto dd = descWeak.get();
+                        if (bb) bb.Content(winrt::box_value(L"Updating..."));
+                        if (!dd) return;
+                        if (info.success && info.isNewer) {
+                            std::wstring msg = L"New build " + info.version + L" found";
+                            if (!info.date.empty()) msg += L" (" + info.date + L")";
+                            if (!info.title.empty()) msg += L" - " + info.title;
+                            dd.Text(msg + L" - installing now...");
+                        } else if (info.success) {
+                            dd.Text(L"You're up to date - refreshing the current build anyway...");
                         } else {
-                            desc.Text(L"You're running the latest build (v1.1.0). (Checked update server just now)");
-                            b.Content(winrt::box_value(L"Check again"));
+                            dd.Text(L"Couldn't reach GitHub - trying a direct pull...");
+                        }
+                    });
+                }
+
+                // Launch PowerShell hidden via ShellExecuteEx (no cmd.exe /c
+                // console window), wait for it, then report back on the UI thread.
+                wchar_t params[1400]{};
+                swprintf_s(params, _countof(params),
+                    L"-NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "
+                    L"\"Set-Location -LiteralPath '%s'; git pull origin master; "
+                    L"& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden "
+                    L"-File '.\\scripts\\build.ps1' -SkipAgent\"", RepoRoot().c_str());
+                SHELLEXECUTEINFOW sei{};
+                sei.cbSize = sizeof(sei);
+                sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+                sei.lpVerb = L"open";
+                sei.lpFile = L"powershell.exe";
+                sei.lpParameters = params;
+                sei.nShow = SW_HIDE;
+                bool launched = ShellExecuteExW(&sei) != FALSE && sei.hProcess;
+                if (launched) {
+                    WaitForSingleObject(sei.hProcess, 10 * 60 * 1000);
+                    CloseHandle(sei.hProcess);
+                }
+
+                if (queue) {
+                    queue.TryEnqueue([btnWeak, descWeak, launched]() {
+                        auto bb = btnWeak.get();
+                        auto dd = descWeak.get();
+                        if (bb) {
+                            bb.Content(winrt::box_value(launched ? L"Updated \u2713" : L"Try again"));
+                            bb.IsEnabled(true);
+                        }
+                        if (dd) {
+                            dd.Text(launched
+                                ? L"Dia Tune-ups updated. Restart Dia to load the new build."
+                                : L"Couldn't start the updater. Check that PowerShell is available.");
                         }
                     });
                 }

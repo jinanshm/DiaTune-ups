@@ -130,6 +130,12 @@ Page g_page;
 // address bar, which lags the same way) still describe the previous tab, so the
 // developer UI must not trust either of them.
 std::atomic<ULONGLONG> g_pageStaleUntil{0};
+// The page tracker and tab title can briefly disagree about the active tab.
+// Keep the developer state "active" for a short grace after a real detection so
+// those misses don't tear down the toolbar and restore Dia's hover-only opacity
+// (which makes the icons appear only while the pointer is over the toolbar).
+constexpr unsigned long long kDevActiveLatchMs = 1200;
+std::atomic<ULONGLONG> g_devActiveUntil{0};
 std::wstring g_iniPath;
 
 // Gradient presets for Portrait Card capture
@@ -529,8 +535,16 @@ bool ActiveTabInDevMode() {
     // The tab row changed but the page tracker has not described the new tab
     // yet: report "not in developer mode" instead of applying the previous
     // tab's developer mark and toolbar to this one for a moment.
+    // A real tab switch clears the latch below, so the toolbar still tears down
+    // promptly when the user leaves a developer tab.
     if (GetTickCount64() < g_pageStaleUntil.load()) return false;
-    return TabInDevMode(CurrentPage());
+    if (TabInDevMode(CurrentPage())) {
+        g_devActiveUntil.store(GetTickCount64() + kDevActiveLatchMs);
+        return true;
+    }
+    // Momentary tracker misses (reload, title rewrite, slow CDP response) must
+    // not restore the hover-only opacity on the toolbar that holds our icons.
+    return GetTickCount64() < g_devActiveUntil.load();
 }
 
 void ToggleCurrentTabDevMode() {
@@ -3286,6 +3300,11 @@ std::vector<winrt::weak_ref<mux::FrameworkElement>> g_hiddenToolbarElements;
 // Keep the strip and its stripe brush alive across Dia's hover rebuilds, so a
 // hover never recreates (and visibly flickers) the developer toolbar.
 mux::FrameworkElement g_toolbarKeep{nullptr};
+// Delay tearing the strip down so a momentary "not in dev mode" reading (page
+// reload, title rewrite, slow CDP) cannot restore Dia's hover-only toolbar
+// opacity and make the icons blink out while the pointer is away.
+std::atomic<ULONGLONG> g_toolbarHideAt{0};
+constexpr unsigned long long kToolbarHideDelayMs = 1500;
 muxm::Brush g_toolbarStripes{nullptr};
 winrt::weak_ref<muxc::Border> g_toolbarBar;
 bool g_toolbarLight = false;
@@ -3453,6 +3472,16 @@ void ShowToolbar() {
         }
     }
 
+    // Dia collapses PinnedExtensionsHost again when the pointer leaves the
+    // toolbar (and shows it on hover). The host is now reused from the cache on
+    // later ticks, so the one-time "host.Visibility(Visible)" in the search
+    // branch no longer runs. Re-assert visibility AND opacity on every tick so
+    // the strip never depends on the pointer being over the toolbar to be seen.
+    if (targetHost) {
+        try { targetHost.Visibility(mux::Visibility::Visible); } catch (...) {}
+        try { targetHost.Opacity(1.0); } catch (...) {}
+    }
+
     if (targetPanel) {
         auto strip = g_toolbarKeep;
         bool builtNew = !strip;
@@ -3460,6 +3489,21 @@ void ShowToolbar() {
         if (!strip) return;
 
         EnsureStripInPanel(targetPanel, strip);
+        // Keep the whole chain from the strip up to the host visible/opaque.
+        // Dia binds hover opacity on intermediate containers; without this the
+        // icons fade out whenever the pointer is not over the toolbar.
+        {
+            mux::DependencyObject cur = strip.as<mux::DependencyObject>();
+            mux::DependencyObject stop = targetHost ? targetHost.as<mux::DependencyObject>() : nullptr;
+            for (int i = 0; cur && i < 6; ++i) {
+                if (auto fe = cur.try_as<mux::FrameworkElement>()) {
+                    try { fe.Visibility(mux::Visibility::Visible); } catch (...) {}
+                    try { fe.Opacity(1.0); } catch (...) {}
+                }
+                if (cur == stop) break;
+                cur = muxm::VisualTreeHelper::GetParent(cur);
+            }
+        }
         if (builtNew || lightChanged) ApplyToolbarLight(strip, isLight);
         EnforceToolbarOnly(targetPanel, strip);
 
@@ -3657,11 +3701,23 @@ void HideToolbar() {
 
 void UpdateToolbar() {
     if (ActiveTabInDevMode()) {
+        g_toolbarHideAt.store(0);
         ShowToolbar();
-    } else {
+        return;
+    }
+    ULONGLONG deadline = g_toolbarHideAt.load();
+    if (!g_toolbarKeep && !deadline) return;  // nothing placed, nothing to hide
+    if (!deadline) {
+        g_toolbarHideAt.store(GetTickCount64() + kToolbarHideDelayMs);
+        return;
+    }
+    if (GetTickCount64() >= deadline) {
+        g_toolbarHideAt.store(0);
         HideToolbar();
     }
 }
+
+
 
 DWORD WINAPI WorkerThread(LPVOID) {
     while (!g_stopWorker) {
@@ -3739,7 +3795,19 @@ std::wstring CurrentOrigin() {
 
 bool ActiveTabInDevMode() {
     if (IsNewTabPage()) return false;
-    return TabInDevMode(CurrentPage());
+    // A real tab switch clears this latch, so leaving a developer tab still
+    // tears the UI down promptly. Momentary tracker misses must not flip the
+    // state to false (see the internal ActiveTabInDevMode used by Tick).
+    if (GetTickCount64() < g_pageStaleUntil.load()) return false;
+    if (TabInDevMode(CurrentPage())) {
+        g_devActiveUntil.store(GetTickCount64() + kDevActiveLatchMs);
+        return true;
+    }
+    return GetTickCount64() < g_devActiveUntil.load();
+}
+
+bool ToolbarActive() {
+    return static_cast<bool>(g_toolbarKeep);
 }
 
 void Tick() {
@@ -3755,6 +3823,8 @@ void Tick() {
             g_page.targetId.clear();
             g_page.devTools = false;
         }
+        g_devActiveUntil.store(0);
+        g_toolbarHideAt.store(0);
         HideToolbar();
         return;
     }
@@ -3779,7 +3849,7 @@ void Tick() {
     };
     static std::wstring s_lastTabTitleKey;
     std::wstring tabKey = titleKey(tabTitle);
-    if (!tabKey.empty() && !s_lastTabTitleKey.empty() && tabKey != s_lastTabTitleKey) {
+    if (!tabKey.empty() && tabKey != s_lastTabTitleKey) {
         {
             std::lock_guard<std::mutex> lock(g_lock);
             g_page.url.clear();
@@ -3791,6 +3861,8 @@ void Tick() {
             g_page.title = tabTitle;
         }
         g_pageStaleUntil.store(GetTickCount64() + kTabSwitchGraceMs);
+        g_devActiveUntil.store(0);
+        g_toolbarHideAt.store(0);
         g_wakeWorker.store(true);
         ClearMark();
         HideToolbar();

@@ -1,4 +1,7 @@
 @echo off
+rem This shim shows a CMD console window. For a no-window launch/apply/update,
+rem use diatweaks.vbs (or point a shortcut at it) instead - it runs the same CLI
+rem hidden. This .cmd is kept for terminal use where the output should be shown.
 setlocal
 set SEE_MASK_NOZONECHECKS=1
 set "CLI=%~dp0cli\diatweaks.ps1"

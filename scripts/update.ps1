@@ -1,4 +1,5 @@
 # update.ps1 - Updates DiaTweaks (Dia Tune-ups) from GitHub repository
+# Runs with no visible console window: any child PowerShell it spawns is hidden.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -35,8 +36,9 @@ if (Test-Path -LiteralPath $changelog) {
     Copy-Item -LiteralPath $changelog -Destination (Join-Path $stateDir 'changelog.json') -Force
 }
 
-# Rebuild binaries
+# Rebuild binaries (hidden, so no extra console window opens)
 Write-Host "Rebuilding binaries..."
-& powershell -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\build.ps1') -SkipAgent
+$psExe = if (Get-Command 'pwsh' -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+& $psExe -NoLogo -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File (Join-Path $root 'scripts\build.ps1') -SkipAgent
 
 Write-Host "`nDia Tune-ups update complete! Restart Dia to load updated tweaks." -ForegroundColor Green
