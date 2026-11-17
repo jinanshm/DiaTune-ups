@@ -2,7 +2,7 @@
 
 All notable changes to **DiaTweaks (Dia Tune-ups) for Windows** will be documented in this file.
 
-## [Unreleased]
+## [1.1.1] - 2026-11-17
 
 ### Added
 - **Material Translucency Slider**: New slider under *Window → Window material* in the Tune-ups panel. It sets how far the space colour fades while the sidebar is open (0% keeps the full colour, 100% leaves only the Mica/Acrylic backdrop). Saved as `materialTransparency` in `state.json` and `xaml.cfg`.

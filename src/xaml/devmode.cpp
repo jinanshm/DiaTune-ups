@@ -531,20 +531,30 @@ Page CurrentPage() {
 }
 
 bool ActiveTabInDevMode() {
-    if (IsNewTabPage()) return false;
-    // The tab row changed but the page tracker has not described the new tab
-    // yet: report "not in developer mode" instead of applying the previous
-    // tab's developer mark and toolbar to this one for a moment.
-    // A real tab switch clears the latch below, so the toolbar still tears down
+    ULONGLONG now = GetTickCount64();
+    static bool s_loggedHold = false;
+    // A real tab switch clears the latch (see Tick), so this still tears down
     // promptly when the user leaves a developer tab.
-    if (GetTickCount64() < g_pageStaleUntil.load()) return false;
-    if (TabInDevMode(CurrentPage())) {
-        g_devActiveUntil.store(GetTickCount64() + kDevActiveLatchMs);
+    if (now < g_pageStaleUntil.load()) return false;
+    // Order matters: IsNewTabPage() can report true for a fraction of a second
+    // while Dia rebuilds the toolbar on hover or while the tab title is empty.
+    // If that were checked first it would bypass the latch, tear the toolbar
+    // down, and restore Dia's hover-only opacity - exactly the "icons only on
+    // hover" glitch. Keep the latch authoritative once dev mode is established.
+    if (now < g_devActiveUntil.load()) {
+        if (!s_loggedHold && IsNewTabPage()) {
+            s_loggedHold = true;
+            Log("developer mode: held the toolbar through a new-tab/hover glitch");
+        }
         return true;
     }
-    // Momentary tracker misses (reload, title rewrite, slow CDP response) must
-    // not restore the hover-only opacity on the toolbar that holds our icons.
-    return GetTickCount64() < g_devActiveUntil.load();
+    s_loggedHold = false;
+    if (IsNewTabPage()) return false;
+    if (TabInDevMode(CurrentPage())) {
+        g_devActiveUntil.store(now + kDevActiveLatchMs);
+        return true;
+    }
+    return false;
 }
 
 void ToggleCurrentTabDevMode() {
@@ -3489,18 +3499,22 @@ void ShowToolbar() {
         if (!strip) return;
 
         EnsureStripInPanel(targetPanel, strip);
-        // Keep the whole chain from the strip up to the host visible/opaque.
-        // Dia binds hover opacity on intermediate containers; without this the
-        // icons fade out whenever the pointer is not over the toolbar.
+        // Dia binds hover opacity/visibility on containers ABOVE the host too
+        // (PinnedExtensionsHost, its parents, UrlBarTrailingStack). Walk the
+        // entire chain up to the top of the toolbar so none of them can fade
+        // our icons out when the pointer leaves. Stop at the first full-width,
+        // tall container so we never touch unrelated window chrome.
         {
             mux::DependencyObject cur = strip.as<mux::DependencyObject>();
-            mux::DependencyObject stop = targetHost ? targetHost.as<mux::DependencyObject>() : nullptr;
-            for (int i = 0; cur && i < 6; ++i) {
+            for (int i = 0; cur && i < 10; ++i) {
                 if (auto fe = cur.try_as<mux::FrameworkElement>()) {
-                    try { fe.Visibility(mux::Visibility::Visible); } catch (...) {}
-                    try { fe.Opacity(1.0); } catch (...) {}
+                    try {
+                        double h = fe.ActualHeight();
+                        if (h > 120.0) break;  // reached the window content, stop
+                        fe.Visibility(mux::Visibility::Visible);
+                        fe.Opacity(1.0);
+                    } catch (...) {}
                 }
-                if (cur == stop) break;
                 cur = muxm::VisualTreeHelper::GetParent(cur);
             }
         }
@@ -3794,16 +3808,18 @@ std::wstring CurrentOrigin() {
 }
 
 bool ActiveTabInDevMode() {
+    ULONGLONG now = GetTickCount64();
+    if (now < g_pageStaleUntil.load()) return false;
+    // Keep the latch authoritative over a transient IsNewTabPage() true (see
+    // the internal ActiveTabInDevMode). This is the value the engine uses to
+    // decide whether to keep the trailing toolbar opaque.
+    if (now < g_devActiveUntil.load()) return true;
     if (IsNewTabPage()) return false;
-    // A real tab switch clears this latch, so leaving a developer tab still
-    // tears the UI down promptly. Momentary tracker misses must not flip the
-    // state to false (see the internal ActiveTabInDevMode used by Tick).
-    if (GetTickCount64() < g_pageStaleUntil.load()) return false;
     if (TabInDevMode(CurrentPage())) {
-        g_devActiveUntil.store(GetTickCount64() + kDevActiveLatchMs);
+        g_devActiveUntil.store(now + kDevActiveLatchMs);
         return true;
     }
-    return GetTickCount64() < g_devActiveUntil.load();
+    return false;
 }
 
 bool ToolbarActive() {
@@ -3813,7 +3829,19 @@ bool ToolbarActive() {
 void Tick() {
     if (!Enabled()) return;
 
+    // IsNewTabPage() briefly reports true while Dia rebuilds the tab row during
+    // a toolbar hover (the title/address read back empty). Treating that as a
+    // real New Tab here used to clear the dev latch and tear the toolbar down,
+    // which restored Dia's hover-only opacity - the icons vanished off-hover.
+    // While the dev latch is still live, ignore the transient reading and keep
+    // the toolbar. A genuine switch to New Tab changes the selected title,
+    // which clears the latch in the tab-switch logic below.
     if (IsNewTabPage()) {
+        ULONGLONG now = GetTickCount64();
+        if (now < g_devActiveUntil.load()) {
+            g_devActiveUntil.store(now + kDevActiveLatchMs);
+            Log("developer mode: ignored a transient new-tab reading during hover");
+        } else {
         {
             std::lock_guard<std::mutex> lock(g_lock);
             g_page.url.clear();
@@ -3827,6 +3855,7 @@ void Tick() {
         g_toolbarHideAt.store(0);
         HideToolbar();
         return;
+        }
     }
 
     std::wstring tabTitle = GetSelectedTabTitle();

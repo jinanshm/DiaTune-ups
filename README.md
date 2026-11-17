@@ -1,6 +1,6 @@
 # DiaTweaks (Dia Tune-ups) for Windows
 
-[![Version 1.1.0](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/jinanshm/DiaTweaks-Win/releases)
+[![Version 1.1.1](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/jinanshm/DiaTweaks-Win/releases)
 [![Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4.svg)](https://microsoft.com/windows)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20Developer-orange.svg)](https://buymeacoffee.com/jinansh_)
 
@@ -10,8 +10,11 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ---
 
-## What's New in Version 1.1.0
+## What's New in Version 1.1.1
 
+- 🦶 **Hover-free Developer Toolbar**: The dev toolbar icons and striped tab mark now stay visible without hovering the toolbar.
+- ⬆️ **One-click, build-aware Updates**: A single button checks GitHub and installs the newest build, detected by git commit rather than published releases.
+- 🪟 **Silent Launch & Apply**: `diatweaks.vbs` and the updater run with no CMD window.
 - 🎛️ **Settings › Tune-ups Panel**: Full native settings page directly inside Dia's settings window with real-time toggle switches, presets, and sliders.
 - 🛠️ **Developer Mode Toolbar**: Arc-style developer tools toolbar (device inspection, console, network panel, element inspector, screenshot captures, and extensions).
 - 👁️ **Peek Link Previews**: Preview links in floating cards before opening (`Shift+click`, `Hold`, `Ctrl+Shift`, `Alt`) with *Genie*, *Ease In/Out*, or *Zoom* animations.

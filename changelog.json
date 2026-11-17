@@ -1,6 +1,20 @@
 {
   "versions": [
     {
+      "version": "1.1.1",
+      "date": "2026-11-17",
+      "title": "Dia Tune-ups v1.1.1",
+      "changes": [
+        "Fix: Developer-mode toolbar icons and the striped tab mark no longer disappear off-hover. The dev state now stays latched through Dia's transient toolbar hover rebuilds, and the trailing toolbar is kept opaque while the toolbar is present.",
+        "One-click Updates: The Tune-ups panel's update card is now a single Update Tune-ups button that checks GitHub, reports what was found, and pulls + rebuilds automatically.",
+        "Smarter Update Detection: New builds are detected by comparing the local git commit with the latest commit on master, so an update is found even when no GitHub release was published or the version wasn't bumped.",
+        "No Console Windows: The in-panel updater, update scripts, and the new diatweaks.vbs launcher run without opening a CMD window.",
+        "Patch Dia however it's opened is now on by default.",
+        "Window Material Translucency Slider: A new slider under Window material sets how far the space colour fades while the sidebar is open.",
+        "Developer Mode: Tab-switch guard stops the dev mark/toolbar jumping to a tab the user just switched to; toolbar icons pick light or dark from the real on-screen toolbar colour."
+      ]
+    },
+    {
       "version": "1.1.0",
       "date": "2026-11-15",
       "title": "Dia Tune-ups v1.1.0",
