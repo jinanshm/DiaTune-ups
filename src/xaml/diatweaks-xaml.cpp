@@ -55,6 +55,7 @@
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 #include <ctime>
+#include <chrono>
 #include "paintings_catalog.h"
 
 #include <algorithm>
@@ -473,6 +474,7 @@ struct TweakCfg {
     bool sidebarGrain = false;
     bool hideTabHoverCard = false;
     bool hideLinkAddress = false;
+    bool arcPinnedTabs = false;
     bool hideHistorySuggestions = false;
     bool dontPopUpDownloads = false;
     bool squareSidebarCorners = false;
@@ -523,6 +525,7 @@ static std::atomic<bool> g_profileEmoji{false};
 static std::atomic<bool> g_sidebarGrain{false};
 static std::atomic<bool> g_hideTabHoverCard{false};
 static std::atomic<bool> g_hideLinkAddress{false};
+static std::atomic<bool> g_arcPinnedTabs{false};
 static std::atomic<bool> g_hideHistorySuggestions{false};
 static std::atomic<bool> g_dontPopUpDownloads{false};
 static std::atomic<bool> g_squareSidebarCorners{false};
@@ -590,6 +593,8 @@ static void ReadConfig() {
         GetPrivateProfileIntW(L"tweaks", L"hideTabHoverCard", 0, g_configPath) != 0;
     g_cfg.hideLinkAddress =
         GetPrivateProfileIntW(L"tweaks", L"hideLinkAddress", 0, g_configPath) != 0;
+    g_cfg.arcPinnedTabs =
+        GetPrivateProfileIntW(L"tweaks", L"arcPinnedTabs", 0, g_configPath) != 0;
     g_cfg.hideHistorySuggestions =
         GetPrivateProfileIntW(L"tweaks", L"hideHistorySuggestions", 0, g_configPath) != 0;
     g_cfg.dontPopUpDownloads =
@@ -708,6 +713,7 @@ static void ReadConfig() {
     g_sidebarGrain.store(g_cfg.sidebarGrain);
     g_hideTabHoverCard.store(g_cfg.hideTabHoverCard);
     g_hideLinkAddress.store(g_cfg.hideLinkAddress);
+    g_arcPinnedTabs.store(g_cfg.arcPinnedTabs);
     g_hideHistorySuggestions.store(g_cfg.hideHistorySuggestions);
     g_dontPopUpDownloads.store(g_cfg.dontPopUpDownloads);
     g_squareSidebarCorners.store(g_cfg.squareSidebarCorners);
@@ -735,7 +741,8 @@ static int CfgStamp() {
            (g_cfg.hideLinkAddress ? 1048576 : 0) | (g_cfg.dontPopUpDownloads ? 2097152 : 0) |
            (g_cfg.squareSidebarCorners ? 4194304 : 0) | (g_cfg.keepWindowsActive ? 8388608 : 0) |
            (g_cfg.newTabPainting ? 16777216 : 0) | (g_cfg.segoeUiVariable ? 33554432 : 0) |
-           (g_cfg.notoEmoji ? 67108864 : 0) | (g_cfg.hideHistorySuggestions ? 134217728 : 0);
+           (g_cfg.notoEmoji ? 67108864 : 0) | (g_cfg.hideHistorySuggestions ? 134217728 : 0) |
+            (g_cfg.arcPinnedTabs ? 268435456 : 0);
 }
 
 // ---------------------------------------------------------------- tree model
@@ -1479,6 +1486,7 @@ bool Engine_TweakOn(const std::wstring& key) {
     if (key == L"dontPopUpDownloads") return g_dontPopUpDownloads.load();
     if (key == L"hideUpgradeBanner") return g_hideUpgradeBanner.load();
     if (key == L"hideLinkAddress") return g_hideLinkAddress.load();
+    if (key == L"arcPinnedTabs") return g_arcPinnedTabs.load();
     if (key == L"hideHistorySuggestions") return g_hideHistorySuggestions.load();
     return false;
 }
@@ -4056,6 +4064,369 @@ static void UpdatePinnedTabBorder() {
     }
 }
 
+// ---------------------------------------------------------------- Arc pinned tabs
+// Ported from zioder/WinDiaTweaks (after JaceThings/DiaTweaks' Arc pinned tabs).
+// On hover, a pinned tab that has left its pinned page shows a small button at its right end:
+// "-" takes it back (Dia's own "Back to Pinned URL"); one still on its page shows "x" (Dia's
+// own Close tab). We never add a button into Dia's row (that broke Back to Pinned URL); the
+// button lives in a Popup overlaid on the row's right end and presses Dia's own button on click.
+
+// Presses a button even when collapsed: its host is shown (invisibly) for one layout pass.
+static bool PressPinnedButton(const muxc::Button& b, const char* what) {
+    if (!b) return false;
+    mux::UIElement hidden{nullptr};
+    for (mux::DependencyObject d = b; d; d = muxm::VisualTreeHelper::GetParent(d))
+        if (auto fe = d.try_as<mux::FrameworkElement>(); fe && fe.Visibility() == mux::Visibility::Collapsed) {
+            hidden = fe;
+            break;
+        }
+    double op = hidden ? hidden.Opacity() : 1;
+    bool ok = false;
+    try {
+        if (hidden) hidden.Opacity(0), hidden.Visibility(mux::Visibility::Visible), hidden.UpdateLayout();
+        mux::Automation::Peers::ButtonAutomationPeer(b).Invoke();
+        ok = true;
+    } catch (...) {
+        Log(L"arc pinned tabs: could not press %hs button", what);
+    }
+    if (hidden) hidden.Visibility(mux::Visibility::Collapsed), hidden.Opacity(op);
+    return ok;
+}
+
+// Every tab row in the list (including those in groups): Dia's row is a UserControl whose grid
+// has five columns (icon, ..., title, close button).
+static std::vector<mux::FrameworkElement> ArcPinnedAllTabRows() {
+    std::vector<mux::FrameworkElement> out;
+    for (auto h : FindNodes(L"RowsPanel"))
+        if (auto rows = Obj<mux::FrameworkElement>(h); rows && rows.ActualHeight() > 0)
+            FirstIn(rows, [&](const mux::FrameworkElement& fe) {
+                if (auto uc = fe.try_as<muxc::UserControl>())
+                    if (auto g = uc.Content().try_as<muxc::Grid>(); g && g.ColumnDefinitions().Size() == 5)
+                        if (std::find(out.begin(), out.end(), fe) == out.end()) out.push_back(fe);
+                return false;
+            });
+    return out;
+}
+
+struct ArcPinnedRow {
+    winrt::weak_ref<muxc::UserControl> row;
+    winrt::weak_ref<muxc::Grid> grid;
+    winrt::event_token entered{}, exited{}, canceled{};
+    bool pinned = false, inFolder = false;
+};
+static thread_local std::vector<ArcPinnedRow> t_arcPinnedRows;
+
+static thread_local struct {
+    muxc::Primitives::Popup popup{nullptr};
+    muxc::Button button{nullptr};
+    muxc::FontIcon icon{nullptr};
+    winrt::weak_ref<muxc::Grid> grid;
+    winrt::weak_ref<muxc::Button> held;
+    mux::Visibility heldVisibility = mux::Visibility::Collapsed;
+    int64_t heldToken = 0;
+    bool away = false;
+    bool overRow = false, overButton = false;
+    winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer timer{nullptr};
+} t_arcPin;
+
+static muxc::Button ArcPinnedRowButton(const muxc::Grid& g, const wchar_t* name, bool visibleOnly) {
+    for (auto const& c : g.Children())
+        if (auto b = c.try_as<muxc::Button>()) {
+            if (visibleOnly && b.Visibility() != mux::Visibility::Visible) continue;
+            if (muxa::AutomationProperties::GetName(b) == name) return b;
+        }
+    return nullptr;
+}
+
+static ArcPinnedRow* ArcPinnedRowFor(const muxc::Grid& g) {
+    for (auto& r : t_arcPinnedRows)
+        if (g && r.grid.get() == g) return &r;
+    return nullptr;
+}
+
+static void ArcReleaseDiaClose() {
+    if (auto c = t_arcPin.held.get()) {
+        c.UnregisterPropertyChangedCallback(mux::UIElement::VisibilityProperty(), t_arcPin.heldToken);
+        c.Opacity(1), c.IsHitTestVisible(true);
+        c.Visibility(t_arcPin.heldVisibility);
+    }
+    t_arcPin.held = nullptr;
+    t_arcPin.heldToken = 0;
+}
+
+static void ArcHoldDiaClose(const muxc::Button& close) {
+    if (t_arcPin.held.get() == close) return;
+    ArcReleaseDiaClose();
+    t_arcPin.heldVisibility = close.Visibility();
+    close.Opacity(0), close.IsHitTestVisible(false);
+    close.Visibility(mux::Visibility::Visible);
+    t_arcPin.held = winrt::make_weak(close);
+    t_arcPin.heldToken = close.RegisterPropertyChangedCallback(mux::UIElement::VisibilityProperty(), [](auto const& sender, auto&&) {
+        if (auto c = sender.template try_as<muxc::Button>(); c && t_arcPin.held.get() == c && c.Visibility() != mux::Visibility::Visible)
+            c.Visibility(mux::Visibility::Visible);
+    });
+}
+
+static void ArcHidePinButton() {
+    ArcReleaseDiaClose();
+    if (t_arcPin.popup && t_arcPin.popup.IsOpen()) t_arcPin.popup.IsOpen(false);
+    t_arcPin.grid = nullptr;
+    t_arcPin.overRow = t_arcPin.overButton = false;
+}
+
+static void ArcPressPinButton() {
+    auto g = t_arcPin.grid.get();
+    bool away = t_arcPin.away;
+    ArcHidePinButton();
+    if (!g) return;
+    if (away) {
+        if (auto back = ArcPinnedRowButton(g, L"Back to Pinned URL", false))
+            PressPinnedButton(back, "back to pinned");
+    } else {
+        PressPinnedButton(ArcPinnedRowButton(g, L"Close tab", false), "close pinned");
+    }
+}
+
+static void ArcMakePinButton() {
+    if (t_arcPin.popup) return;
+    t_arcPin.icon = muxc::FontIcon();
+    t_arcPin.icon.FontSize(10);
+    t_arcPin.button = muxc::Button();
+    t_arcPin.button.Name(L"DiaTweaksPinnedButton");
+    t_arcPin.button.Content(t_arcPin.icon);
+    t_arcPin.button.Click([](auto&&, auto&&) {
+        try { ArcPressPinButton(); } catch (...) {}
+    });
+    t_arcPin.button.PointerEntered([](auto&&, auto&&) { t_arcPin.overButton = true; });
+    t_arcPin.button.PointerExited([](auto&&, auto&&) {
+        t_arcPin.overButton = false;
+        if (t_arcPin.timer) t_arcPin.timer.Start();
+    });
+    t_arcPin.popup = muxc::Primitives::Popup();
+    t_arcPin.popup.ShouldConstrainToRootBounds(false);
+    t_arcPin.popup.Child(t_arcPin.button);
+    t_arcPin.timer = t_arcPin.button.DispatcherQueue().CreateTimer();
+    t_arcPin.timer.Interval(std::chrono::milliseconds(80));
+    t_arcPin.timer.IsRepeating(false);
+    t_arcPin.timer.Tick([](auto&&, auto&&) {
+        try { if (!t_arcPin.overRow && !t_arcPin.overButton) ArcHidePinButton(); } catch (...) {}
+    });
+}
+
+static void ArcStylePinButton(bool dark) {
+    static thread_local int styled = -1;
+    if (styled == (int)dark) return;
+    styled = dark;
+    auto& b = t_arcPin.button;
+    auto brush = [](uint8_t a, uint8_t v) { return muxm::SolidColorBrush(winrt::Windows::UI::ColorHelper::FromArgb(a, v, v, v)); };
+    uint8_t ink = dark ? 255 : 0;
+    auto res = b.Resources();
+    auto put = [&](const wchar_t* key, const muxm::SolidColorBrush& v) { res.Insert(winrt::box_value(key), v); };
+    put(L"ButtonBackground", brush(0, ink));
+    put(L"ButtonBackgroundPointerOver", brush(dark ? 0x26 : 0x14, ink));
+    put(L"ButtonBackgroundPressed", brush(dark ? 0x1a : 0x0e, ink));
+    put(L"ButtonBorderBrush", brush(0, ink));
+    put(L"ButtonBorderBrushPointerOver", brush(0, ink));
+    put(L"ButtonBorderBrushPressed", brush(0, ink));
+    put(L"ButtonForeground", brush(dark ? 0xcc : 0xb3, ink));
+    put(L"ButtonForegroundPointerOver", brush(0xff, ink));
+    put(L"ButtonForegroundPressed", brush(dark ? 0xb3 : 0x99, ink));
+    b.Background(brush(0, ink));
+    b.BorderThickness({0, 0, 0, 0});
+    b.Padding({0, 0, 0, 0});
+    b.CornerRadius({4, 4, 4, 4});
+    b.MinWidth(0), b.MinHeight(0);
+    b.HorizontalContentAlignment(mux::HorizontalAlignment::Center);
+    b.VerticalContentAlignment(mux::VerticalAlignment::Center);
+    b.RequestedTheme(dark ? mux::ElementTheme::Dark : mux::ElementTheme::Light);
+    t_arcPin.icon.FontFamily(muxm::FontFamily(L"Segoe Fluent Icons, Segoe MDL2 Assets"));
+}
+
+static bool ArcPlacePinButton(const ArcPinnedRow& r) {
+    auto g = r.grid.get();
+    auto row = r.row.get();
+    if (!g || !row || !row.IsLoaded() || !r.pinned || g.ActualWidth() <= 0 || !g.XamlRoot()) return false;
+    auto close = ArcPinnedRowButton(g, L"Close tab", false);
+    if (!close) return false;
+    bool away = ArcPinnedRowButton(g, L"Back to Pinned URL", true) != nullptr;
+    if (!away && r.inFolder) return false;
+    ArcMakePinButton();
+    t_arcPin.grid = winrt::make_weak(g);
+    bool wasHeld = t_arcPin.held.get() == close;
+    ArcHoldDiaClose(close);
+    if (!wasHeld) g.UpdateLayout();
+    auto& b = t_arcPin.button;
+    double w = close.ActualWidth() > 0 ? close.ActualWidth() : 22, h = close.ActualHeight() > 0 ? close.ActualHeight() : 22;
+    if (b.Width() != w) b.Width(w), b.Height(h);
+    ArcStylePinButton(g.ActualTheme() != mux::ElementTheme::Light);
+    winrt::hstring glyph = away ? L"\uE173" : L"\uE711";  // Remove (-) / Cancel (x), as Dia's
+    if (t_arcPin.icon.Glyph() != glyph) {
+        t_arcPin.icon.Glyph(glyph);
+        const wchar_t* label = away ? L"Back to Pinned URL" : L"Close tab";
+        muxa::AutomationProperties::SetName(b, label);
+        muxc::ToolTipService::SetToolTip(b, winrt::box_value(label));
+    }
+    t_arcPin.away = away;
+    double x, y;
+    if (close.ActualWidth() > 0) {
+        auto c = close.TransformToVisual(nullptr).TransformPoint({0, 0});
+        x = c.X, y = c.Y;
+    } else {
+        auto o = g.TransformToVisual(nullptr).TransformPoint({0, 0});
+        x = o.X + g.ActualWidth() - g.Padding().Right - close.Margin().Right - w;
+        y = o.Y + (g.ActualHeight() - h) / 2;
+    }
+    auto& p = t_arcPin.popup;
+    if (p.XamlRoot() != g.XamlRoot()) p.IsOpen(false), p.XamlRoot(g.XamlRoot());
+    if (std::abs(p.HorizontalOffset() - x) > 0.5) p.HorizontalOffset(x);
+    if (std::abs(p.VerticalOffset() - y) > 0.5) p.VerticalOffset(y);
+    if (!p.IsOpen()) p.IsOpen(true);
+    return true;
+}
+
+static void ArcPinnedRowHover(const winrt::weak_ref<muxc::Grid>& wg, bool on) {
+    auto g = wg.get();
+    auto r = ArcPinnedRowFor(g);
+    if (!r) return;
+    if (on) {
+        t_arcPin.overRow = ArcPlacePinButton(*r);
+        if (!t_arcPin.overRow && t_arcPin.grid.get() == g) ArcHidePinButton();
+    } else if (t_arcPin.grid.get() == g) {
+        t_arcPin.overRow = false;
+        if (t_arcPin.timer) t_arcPin.timer.Start();
+    }
+}
+
+static void ArcForgetPinnedRow(ArcPinnedRow& r) {
+    if (auto row = r.row.get()) {
+        row.PointerEntered(r.entered);
+        row.PointerExited(r.exited);
+        row.PointerCanceled(r.canceled);
+    }
+}
+
+static void ArcAdoptPinnedRow(const muxc::UserControl& row, const muxc::Grid& g) {
+    ArcPinnedRow r;
+    r.row = winrt::make_weak(row);
+    r.grid = winrt::make_weak(g);
+    auto wg = r.grid;
+    r.entered = row.PointerEntered([wg](auto&&, auto&&) { try { ArcPinnedRowHover(wg, true); } catch (...) {} });
+    r.exited = row.PointerExited([wg](auto&&, auto&&) { try { ArcPinnedRowHover(wg, false); } catch (...) {} });
+    r.canceled = row.PointerCanceled([wg](auto&&, auto&&) { try { ArcPinnedRowHover(wg, false); } catch (...) {} });
+    t_arcPinnedRows.push_back(std::move(r));
+}
+
+// Dia's "away from pinned page" look goes: no "/" after the icon and no "Back to Pinned URL" line.
+struct ArcPinnedMark {
+    winrt::weak_ref<muxc::Button> back;
+    double opacity = 1, width = 0;
+    winrt::weak_ref<mux::FrameworkElement> subtitle;
+    mux::Visibility subtitleVisibility = mux::Visibility::Collapsed;
+    int64_t subtitleToken = 0;
+};
+static thread_local std::vector<ArcPinnedMark> t_arcPinnedMarks;
+
+static void ArcRestorePinnedMark(ArcPinnedMark& m) {
+    if (auto b = m.back.get()) b.Opacity(m.opacity), b.IsHitTestVisible(true), b.Width(m.width);
+    if (auto s = m.subtitle.get()) {
+        s.UnregisterPropertyChangedCallback(mux::UIElement::VisibilityProperty(), m.subtitleToken);
+        s.Visibility(m.subtitleVisibility);
+    }
+}
+
+static void ArcUpdatePinnedMarks() {
+    if (!g_arcPinnedTabs.load()) {
+        for (auto& m : t_arcPinnedMarks) ArcRestorePinnedMark(m);
+        t_arcPinnedMarks.clear();
+        return;
+    }
+    std::erase_if(t_arcPinnedMarks, [](ArcPinnedMark& m) {
+        auto b = m.back.get();
+        if (b && b.IsLoaded()) return false;
+        ArcRestorePinnedMark(m);
+        return true;
+    });
+    for (auto& row : ArcPinnedAllTabRows()) {
+        auto g = row.try_as<muxc::UserControl>().Content().try_as<muxc::Grid>();
+        auto back = g ? ArcPinnedRowButton(g, L"Back to Pinned URL", false) : nullptr;
+        if (!back) continue;
+        if (std::any_of(t_arcPinnedMarks.begin(), t_arcPinnedMarks.end(), [&](ArcPinnedMark& m) { return m.back.get() == back; })) {
+            if (back.Opacity() != 0) back.Opacity(0);
+            if (back.Width() != 0) back.Width(0);
+            continue;
+        }
+        ArcPinnedMark m;
+        m.back = winrt::make_weak(back);
+        m.opacity = back.Opacity();
+        m.width = back.Width();
+        back.Opacity(0), back.IsHitTestVisible(false), back.Width(0);
+        for (auto const& c : g.Children()) {
+            auto stack = c.try_as<muxc::StackPanel>();
+            if (!stack) continue;
+            for (auto const& line : stack.Children()) {
+                auto fe = line.try_as<mux::FrameworkElement>();
+                if (!fe || !FirstIn(fe, [](const mux::FrameworkElement& e) {
+                        auto t = e.try_as<muxc::TextBlock>();
+                        return t && t.Text() == L"Back to Pinned URL";
+                    }))
+                    continue;
+                m.subtitle = winrt::make_weak(fe);
+                m.subtitleVisibility = fe.Visibility();
+                fe.Visibility(mux::Visibility::Collapsed);
+                m.subtitleToken = fe.RegisterPropertyChangedCallback(mux::UIElement::VisibilityProperty(), [](auto const& sender, auto&&) {
+                    if (auto e = sender.template try_as<mux::FrameworkElement>(); e && e.Visibility() != mux::Visibility::Collapsed)
+                        e.Visibility(mux::Visibility::Collapsed);
+                });
+            }
+        }
+        t_arcPinnedMarks.push_back(std::move(m));
+    }
+}
+
+static void ArcUpdatePinnedTabs() {
+    if (!g_arcPinnedTabs.load()) {
+        if (t_arcPin.popup && t_arcPin.popup.IsOpen()) ArcHidePinButton();
+        for (auto& r : t_arcPinnedRows) ArcForgetPinnedRow(r);
+        t_arcPinnedRows.clear();
+        for (auto& m : t_arcPinnedMarks) ArcRestorePinnedMark(m);
+        t_arcPinnedMarks.clear();
+        return;
+    }
+    std::erase_if(t_arcPinnedRows, [](ArcPinnedRow& r) {
+        auto row = r.row.get();
+        if (row && row.IsLoaded()) return false;
+        ArcForgetPinnedRow(r);
+        return true;
+    });
+    for (auto& r : t_arcPinnedRows) r.pinned = false;
+    for (auto h : FindNodes(L"TabSeparatorRow")) {
+        auto sep = Obj<mux::FrameworkElement>(h);
+        auto list = sep ? muxm::VisualTreeHelper::GetParent(sep).try_as<muxc::StackPanel>() : nullptr;
+        if (!list || list.ActualHeight() <= 0) continue;
+        for (auto const& child : list.Children()) {
+            if (child == sep) break;
+            auto top = child.try_as<mux::FrameworkElement>();
+            if (!top) continue;
+            FirstIn(top, [&](const mux::FrameworkElement& fe) {
+                auto uc = fe.try_as<muxc::UserControl>();
+                auto g = uc ? uc.Content().try_as<muxc::Grid>() : nullptr;
+                if (!g || g.ColumnDefinitions().Size() != 5) return false;
+                bool inFolder = false;
+                for (auto p = muxm::VisualTreeHelper::GetParent(fe); p && p != list; p = muxm::VisualTreeHelper::GetParent(p))
+                    if (auto pe = p.try_as<mux::FrameworkElement>(); pe && pe.Name() == L"RowsPanel") inFolder = true;
+                auto r = ArcPinnedRowFor(g);
+                if (!r) ArcAdoptPinnedRow(uc, g), r = ArcPinnedRowFor(g);
+                if (r) r->pinned = true, r->inFolder = inFolder;
+                return false;
+            });
+        }
+    }
+    if (t_arcPin.popup && t_arcPin.popup.IsOpen()) {
+        auto r = ArcPinnedRowFor(t_arcPin.grid.get());
+        if (!r || !ArcPlacePinButton(*r)) ArcHidePinButton();
+    }
+}
+
 static void UpdateLinkAddressNode(InstanceHandle handle) {
     bool hide = g_hideLinkAddress.load();
     Inspectable obj{nullptr};
@@ -5335,6 +5706,8 @@ static void ApplyAllOnThisThread() {
     UpdateNewTabPainting();
     UpdateDownloadsPopup();
     UpdatePinnedTabBorder();
+    ArcUpdatePinnedTabs();
+    ArcUpdatePinnedMarks();
     UpdateProfileEmoji();
     UpdateHideLinkAddress();
     SettingsUi::CheckActiveSettingsPage();
@@ -5584,6 +5957,7 @@ static bool GetTweakBool(const std::wstring& key) {
     if (key == L"sidebarGrain") return g_cfg.sidebarGrain;
     if (key == L"hideTabHoverCard") return g_cfg.hideTabHoverCard;
     if (key == L"hideLinkAddress") return g_cfg.hideLinkAddress;
+    if (key == L"arcPinnedTabs") return g_cfg.arcPinnedTabs;
     if (key == L"hideHistorySuggestions") return g_cfg.hideHistorySuggestions;
     if (key == L"dontPopUpDownloads") return g_cfg.dontPopUpDownloads;
     if (key == L"squareSidebarCorners") return g_cfg.squareSidebarCorners;
@@ -7482,6 +7856,7 @@ static mux::FrameworkElement BuildPage(const NavHook& hook) {
         {{L"sand", L"Sand"}, {L"grain", L"Fine grain"}, {L"denim", L"Denim weave"}, {L"paper", L"Paper fiber"}}}));
     sbRows.push_back(BuildGrainOptionsRow());
     sbRows.push_back(BuildRow({L"hidePinnedTabBorder", L"Hide pinned tab border", L"Remove the border outline around pinned tabs.", L"\uE7C3"}));
+    sbRows.push_back(BuildRow({L"arcPinnedTabs", L"Arc pinned tabs", L"On hover, show a minus to return a pinned tab to its page, or a close button when it is already there.", L"\uE718"}));
     sbRows.push_back(BuildRow({L"hideTabHoverCard", L"Hide tab hover card", L"Stops the preview card from popping up when hovering over open or pinned tabs.", L"\uE7C3"}));
     sbRows.push_back(BuildRow({L"profileEmoji", L"Profile emoji", L"Show an emoji in place of each space's dot in the space switcher. Choose them in Settings › Profiles.", L"\uE77F"}));
     stack.Children().Append(BuildSection(L"Sidebar & Tab Bar", sbRows));
@@ -8122,6 +8497,15 @@ private:
 
         Peek_Tick();
         History_Tick();
+        // Arc pinned tabs need to re-adopt rows Dia rebuilds on hover; run
+        // periodically (not just on config/tree changes) like zioder's port.
+        if (g_arcPinnedTabs.load()) {
+            static int s_arcPinTick = 0;
+            if (++s_arcPinTick % 3 == 0) {
+                ArcUpdatePinnedTabs();
+                ArcUpdatePinnedMarks();
+            }
+        }
         DevMode::Tick();
     }
 };

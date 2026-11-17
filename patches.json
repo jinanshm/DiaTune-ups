@@ -332,6 +332,14 @@
       "mechanism": "xaml"
     },
     {
+      "key": "arcPinnedTabs",
+      "order": 104.7,
+      "title": "Arc pinned tabs",
+      "detail": "On hover, a pinned tab that left its pinned page shows a minus to go back; one still on its page shows a close button. Matches Arc's pinned tab behaviour.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
       "key": "hideHistorySuggestions",
       "order": 105.5,
       "title": "Hide history suggestions",
