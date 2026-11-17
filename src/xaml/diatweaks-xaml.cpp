@@ -24,6 +24,8 @@
 #include <winrt/Windows.Data.Json.h>
 #include <winrt/Windows.UI.h>
 #include <winrt/Windows.UI.Text.h>
+#include <winrt/Windows.UI.ViewManagement.h>
+#include <winrt/Microsoft.UI.Composition.h>
 #include <winrt/Microsoft.UI.Composition.SystemBackdrops.h>
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Hosting.h>
@@ -33,6 +35,7 @@
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Data.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Microsoft.UI.Xaml.Shapes.h>
 #include <winrt/Microsoft.UI.Xaml.Media.Imaging.h>
 #include <winrt/Microsoft.UI.Xaml.Documents.h>
 #include <winrt/Microsoft.UI.Xaml.Automation.h>
@@ -73,6 +76,8 @@ namespace muxd = winrt::Microsoft::UI::Xaml::Data;
 namespace muxm = winrt::Microsoft::UI::Xaml::Media;
 namespace muxa = winrt::Microsoft::UI::Xaml::Automation;
 namespace muxk = winrt::Microsoft::UI::Xaml::Markup;
+namespace muxsh = winrt::Microsoft::UI::Xaml::Shapes;
+namespace mucomp = winrt::Microsoft::UI::Composition;
 using Inspectable = winrt::Windows::Foundation::IInspectable;
 
 namespace SettingsUi {
@@ -473,6 +478,7 @@ struct TweakCfg {
     bool keepWindowsActive = false;
     bool normalLaunch = false;
     bool segoeUiVariable = false;
+    bool notoEmoji = false;
     bool developerMode = false;
     bool developerModeLocalhost = true;
     std::wstring profileEmojiText = L"🦊";
@@ -480,12 +486,14 @@ struct TweakCfg {
     int sidebarGrainAmount = 50;
     int sidebarGrainSoftness = 0;
     int newTabPaintingTint = 67;
+    int materialTransparency = 100;
     std::wstring sidebarGrainMaterial = L"sand";
     std::wstring windowMaterial = L"mica";
     std::wstring hideToolbarMode = L"overlay";
     std::wstring preset = L"custom";
     std::wstring peekTrigger = L"shift";
     std::wstring peekAnimation = L"genie";
+    std::wstring notoEmojiFont = L"notoColor";
 };
 
 static TweakCfg g_cfg;
@@ -500,6 +508,7 @@ static std::atomic<bool> g_hideTabSearchButton{false};
 static std::atomic<bool> g_hideLoadingAnimation{false};
 static std::atomic<bool> g_hidePinnedTabBorder{false};
 static std::atomic<bool> g_translucentSidebar{false};
+static std::atomic<int> g_materialTransparency{100};
 static std::atomic<bool> g_showToolbarWithSidebar{false};
 static std::atomic<bool> g_showToolbarOnNewTab{false};
 static std::atomic<bool> g_cleanSearchBox{false};
@@ -518,6 +527,7 @@ static std::atomic<bool> g_squareSidebarCorners{false};
 static std::atomic<bool> g_keepWindowsActive{false};
 static std::atomic<bool> g_normalLaunch{false};
 static std::atomic<bool> g_segoeUiVariable{false};
+static std::atomic<bool> g_notoEmoji{false};
 
 static bool IsNewTab();
 
@@ -588,6 +598,8 @@ static void ReadConfig() {
         GetPrivateProfileIntW(L"tweaks", L"normalLaunch", 0, g_configPath) != 0;
     g_cfg.segoeUiVariable =
         GetPrivateProfileIntW(L"tweaks", L"segoeUiVariable", 0, g_configPath) != 0;
+    g_cfg.notoEmoji =
+        GetPrivateProfileIntW(L"tweaks", L"notoEmoji", 0, g_configPath) != 0;
     g_cfg.developerMode =
         GetPrivateProfileIntW(L"tweaks", L"developerMode", 0, g_configPath) != 0;
     g_cfg.developerModeLocalhost =
@@ -596,6 +608,10 @@ static void ReadConfig() {
     wchar_t emojiBuf[64]{};
     GetPrivateProfileStringW(L"tweaks", L"profileEmojiText", L"🦊", emojiBuf, _countof(emojiBuf), g_configPath);
     g_cfg.profileEmojiText = emojiBuf;
+
+    wchar_t notoFontBuf[64]{};
+    GetPrivateProfileStringW(L"tweaks", L"notoEmojiFont", L"notoColor", notoFontBuf, _countof(notoFontBuf), g_configPath);
+    g_cfg.notoEmojiFont = notoFontBuf;
 
     wchar_t presetBuf[64]{};
     GetPrivateProfileStringW(L"tweaks", L"preset", L"custom", presetBuf, _countof(presetBuf), g_configPath);
@@ -641,6 +657,11 @@ static void ReadConfig() {
     if (g_cfg.newTabPaintingTint > 100) g_cfg.newTabPaintingTint = 100;
     g_newTabPaintingTint.store(g_cfg.newTabPaintingTint);
 
+    g_cfg.materialTransparency =
+        GetPrivateProfileIntW(L"tweaks", L"materialTransparency", 100, g_configPath);
+    if (g_cfg.materialTransparency < 0) g_cfg.materialTransparency = 0;
+    if (g_cfg.materialTransparency > 100) g_cfg.materialTransparency = 100;
+
     if (g_cfg.sidebarGrain) {
         static std::wstring s_lastGrainMat;
         static int s_lastGrainAmount = -1;
@@ -670,6 +691,7 @@ static void ReadConfig() {
     g_hideLoadingAnimation.store(g_cfg.hideLoadingAnimation);
     g_hidePinnedTabBorder.store(g_cfg.hidePinnedTabBorder);
     g_translucentSidebar.store(g_cfg.translucentSidebar);
+    g_materialTransparency.store(g_cfg.materialTransparency);
     g_showToolbarWithSidebar.store(g_cfg.showToolbarWithSidebar);
     g_showToolbarOnNewTab.store(g_cfg.showToolbarOnNewTab);
     g_cleanSearchBox.store(g_cfg.cleanSearchBox);
@@ -687,6 +709,7 @@ static void ReadConfig() {
     g_keepWindowsActive.store(g_cfg.keepWindowsActive);
     g_normalLaunch.store(g_cfg.normalLaunch);
     g_segoeUiVariable.store(g_cfg.segoeUiVariable);
+    g_notoEmoji.store(g_cfg.notoEmoji);
 
     // The developer mode tweak needs to know when it is switched on or off.
     DevMode::SetEnabled(g_cfg.developerMode);
@@ -706,7 +729,8 @@ static int CfgStamp() {
            (g_cfg.sidebarGrain ? 262144 : 0) | (g_cfg.hideTabHoverCard ? 524288 : 0) |
            (g_cfg.hideLinkAddress ? 1048576 : 0) | (g_cfg.dontPopUpDownloads ? 2097152 : 0) |
            (g_cfg.squareSidebarCorners ? 4194304 : 0) | (g_cfg.keepWindowsActive ? 8388608 : 0) |
-           (g_cfg.newTabPainting ? 16777216 : 0) | (g_cfg.segoeUiVariable ? 33554432 : 0);
+           (g_cfg.newTabPainting ? 16777216 : 0) | (g_cfg.segoeUiVariable ? 33554432 : 0) |
+           (g_cfg.notoEmoji ? 67108864 : 0);
 }
 
 // ---------------------------------------------------------------- tree model
@@ -1203,14 +1227,60 @@ static void InvalidateNewTabCache() {
     t_lastNewTabCheckTick = 0;
 }
 
+static bool CheckIsNewTabInternal() {
+    // 1. Fast check: is the cached newTabPage still alive and on screen?
+    if (auto grid = t_activeNewTabPage.get()) {
+        try {
+            if (grid.Visibility() == mux::Visibility::Visible &&
+                grid.ActualWidth() >= 1 &&
+                ShownOnScreen(grid)) {
+                return true;
+            }
+            // Alive but hidden: the user is on a website tab.
+            return false;
+        } catch (...) {
+            t_activeNewTabPage = nullptr;
+        }
+    }
+
+    // 2. Scan the live tree for the start page (only after it changes).
+    static uint64_t s_lastFullScanTick = 0;
+    uint64_t now = GetTickCount64();
+    if (!g_treeDirty.load() && (now - s_lastFullScanTick < 2000)) return false;
+    s_lastFullScanTick = now;
+
+    std::lock_guard<std::recursive_mutex> lock(g_mx);
+    for (const auto& [handle, node] : g_nodes) {
+        if (node.type != L"Microsoft.UI.Xaml.Controls.Grid") continue;
+        Inspectable obj{nullptr};
+        if (!GetObject(handle, obj)) continue;
+        if (auto fe = obj.try_as<mux::FrameworkElement>()) {
+            try {
+                if (std::wstring(muxa::AutomationProperties::GetName(fe)) == L"newTabPage") {
+                    if (auto g = fe.try_as<muxc::Grid>()) t_activeNewTabPage = winrt::make_weak(g);
+                    if (fe.ActualWidth() >= 1 && fe.Visibility() == mux::Visibility::Visible &&
+                        ShownOnScreen(fe)) {
+                        return true;
+                    }
+                }
+            } catch (...) {}
+        }
+    }
+    return false;
+}
+
 static bool IsNewTab() {
     uint64_t now = GetTickCount64();
     if (now - t_lastNewTabCheckTick < 100) {
         return t_isNewTabCached;
     }
     t_lastNewTabCheckTick = now;
-    t_isNewTabCached = IsDiaNewTab();
+    t_isNewTabCached = CheckIsNewTabInternal();
     return t_isNewTabCached;
+}
+
+bool IsDiaNewTab() {
+    return IsNewTab();
 }
 
 static bool PointerAtTop(DWORD uiThread, bool shown) {
@@ -2090,6 +2160,15 @@ struct BarAnim {
     bool overlay = false;  // "Over the page": page stays put, only the toolbar slides
     // Toolbar/containers up to the group, raised above sibling layers while over the page.
     std::vector<std::pair<winrt::weak_ref<mux::UIElement>, int>> raised;
+    // Over the page: crop the group to the page card so the window inset stays
+    // visible at the top and bottom while the page is moved up behind the toolbar.
+    muxm::RectangleGeometry savedClip{nullptr};
+    muxm::RectangleGeometry overlayClip{nullptr};
+    // Rounded crop (composition), so the visible top corners match the card's bottom.
+    mucomp::CompositionClip savedVisualClip{nullptr};
+    mucomp::CompositionGeometricClip overlayRoundedClip{nullptr};
+    mucomp::CompositionRoundedRectangleGeometry overlayRoundedGeometry{nullptr};
+    bool clipSaved = false;
 };
 
 static thread_local std::map<InstanceHandle, BarAnim> t_bars;
@@ -2113,6 +2192,23 @@ static double BarHeight(BarAnim& a) {
 
 static bool OverlayToolbar() { return g_cfg.hideToolbarMode == L"overlay"; }
 static void UpdatePageClips();
+
+static void RestoreOverlayClip(BarAnim& a) {
+    if (!a.clipSaved) return;
+    if (auto g = a.group.get()) {
+        try { g.Clip(a.savedClip); } catch (...) {}
+        try {
+            auto visual = mux::Hosting::ElementCompositionPreview::GetElementVisual(g);
+            if (visual) visual.Clip(a.savedVisualClip);
+        } catch (...) {}
+    }
+    a.savedClip = nullptr;
+    a.overlayClip = nullptr;
+    a.savedVisualClip = nullptr;
+    a.overlayRoundedClip = nullptr;
+    a.overlayRoundedGeometry = nullptr;
+    a.clipSaved = false;
+}
 
 static void RaiseBar(BarAnim& a, bool raise) {
     if (!raise) {
@@ -2148,6 +2244,47 @@ static void ApplyOffset(BarAnim& a, double h, bool settled) {
         if (auto b = a.bar.get()) {
             float y = (float)(a.offset + h);
             if (b.Translation().y != y) b.Translation({0.0f, y, 0.0f});
+        }
+        // Keep the window's 4 px page inset: the page may fill the toolbar strip,
+        // but it must not paint over the top/bottom border of the window.
+        if (!a.clipSaved) {
+            try {
+                a.savedClip = g.Clip();
+                auto visual = mux::Hosting::ElementCompositionPreview::GetElementVisual(g);
+                if (visual) a.savedVisualClip = visual.Clip();
+                a.clipSaved = true;
+            } catch (...) {}
+        }
+        double hh = BarHeight(a);
+        double wh = (std::max)(0.0, g.ActualHeight() - hh);
+        double radius = g_squareSidebarCorners.load() ? 0.0 : 8.0;
+        if (auto grid = g.try_as<muxc::Grid>()) {
+            auto cr = grid.CornerRadius();
+            radius = (std::max)(0.0, (std::max)((double)cr.TopLeft, (double)cr.TopRight));
+        }
+        bool rounded = false;
+        try {
+            auto visual = mux::Hosting::ElementCompositionPreview::GetElementVisual(g);
+            if (visual) {
+                auto comp = visual.Compositor();
+                if (!a.overlayRoundedGeometry) {
+                    a.overlayRoundedGeometry = comp.CreateRoundedRectangleGeometry();
+                    a.overlayRoundedClip = comp.CreateGeometricClip(a.overlayRoundedGeometry);
+                }
+                a.overlayRoundedGeometry.Offset({0.0f, (float)hh});
+                a.overlayRoundedGeometry.Size({(float)g.ActualWidth(), (float)wh});
+                a.overlayRoundedGeometry.CornerRadius({(float)radius, (float)radius});
+                if (g.Clip() == a.overlayClip) g.Clip(a.savedClip);
+                if (visual.Clip() != a.overlayRoundedClip) visual.Clip(a.overlayRoundedClip);
+                rounded = true;
+            }
+        } catch (...) {}
+        if (!rounded) {
+            if (!a.overlayClip) a.overlayClip = muxm::RectangleGeometry();
+            a.overlayClip.Rect({0.0f, (float)hh, (float)g.ActualWidth(), (float)wh});
+            try {
+                if (g.Clip() != a.overlayClip) g.Clip(a.overlayClip);
+            } catch (...) {}
         }
         RaiseBar(a, true);
         return;
@@ -2217,20 +2354,29 @@ static void UpdatePageClips() {
         if (!g || !b) continue;
         auto root = g.XamlRoot();
         if (!root) continue;
-        double h = BarHeight(a);
-        double shown = a.offset + h;  // how much of the toolbar is in the window
-        if (shown < 0.5) continue;
         HWND top = TopWindowFor(root);
         if (!top) continue;
+        double h = BarHeight(a);
+        double shown = a.offset + h;  // how much of the toolbar is in the window
         double sc = root.RasterizationScale();
         auto at = g.TransformToVisual(nullptr).TransformPoint({0, 0});
         double barLeft = b.TransformToVisual(g).TransformPoint({0, 0}).X + at.X;
         POINT origin{0, 0};
         ClientToScreen(top, &origin);
-        RECT r{origin.x + (LONG)std::floor(barLeft * sc), origin.y + (LONG)std::floor((at.Y + h) * sc),
-               origin.x + (LONG)std::ceil((barLeft + b.ActualWidth()) * sc),
-               origin.y + (LONG)std::ceil((at.Y + h + shown) * sc)};
-        if (r.right > r.left && r.bottom > r.top) bars[top].push_back(r);
+        auto cutRect = [&](double left, double right, double topY, double bottomY) {
+            RECT r{origin.x + (LONG)std::floor(left * sc), origin.y + (LONG)std::floor(topY * sc),
+                   origin.x + (LONG)std::ceil(right * sc), origin.y + (LONG)std::ceil(bottomY * sc)};
+            if (r.right > r.left && r.bottom > r.top) bars[top].push_back(r);
+        };
+        // The page is allowed to fill the toolbar strip, but never the window's
+        // inset: the top/bottom border has to stay visible in every state.
+        double topInset = at.Y + h;
+        double pageBottom = at.Y + g.ActualHeight();
+        if (topInset > 0.1) cutRect(at.X, at.X + g.ActualWidth(), 0.0, topInset);
+        cutRect(at.X, at.X + g.ActualWidth(), pageBottom, pageBottom + 10000.0);
+        if (shown > 0.5) {
+            cutRect(barLeft, barLeft + b.ActualWidth(), at.Y + h, at.Y + h + shown);
+        }
     }
 
     std::map<HWND, std::vector<RECT>> want;
@@ -2488,6 +2634,7 @@ static void UpdateHiddenToolbar() {
         if (a.overlay != overlay) {
             if (a.overlay && barEl) barEl.Translation({0.0f, 0.0f, 0.0f});
             if (a.overlay) RaiseBar(a, false);
+            if (a.overlay) RestoreOverlayClip(a);
             a.overlay = overlay;
             a.animating = false;
             a.offset = a.to;
@@ -2495,6 +2642,7 @@ static void UpdateHiddenToolbar() {
         }
         if (!hide && !a.animating && a.offset > -0.5) {
             group.Margin(a.saved);
+            RestoreOverlayClip(a);
             a.managed = false;
             continue;
         }
@@ -2745,11 +2893,81 @@ struct MaterialState {
     winrt::weak_ref<winrt::Microsoft::UI::Xaml::Hosting::DesktopWindowXamlSource> src;
     winrt::weak_ref<muxc::Panel> panel;
     muxm::Brush savedBrush{nullptr};
-    muxm::Brush clear{muxm::SolidColorBrush(winrt::Windows::UI::Color{0, 0, 0, 0})};
+    muxm::SolidColorBrush tintBrush{nullptr};
+    winrt::Windows::UI::Color tint{};
     std::wstring applied;
     InstanceHandle root = 0;
 };
 static thread_local std::vector<MaterialState> t_material;
+
+// Dia tints each space/profile with a gradient on SidebarFloatingTint. Reuse
+// that colour as the material tint so the backdrop follows the active theme
+// instead of staying the neutral grey Dia paints behind the chrome.
+static bool ThemeTintColor(winrt::Windows::UI::Color& out) {
+    for (auto h : FindNodes(L"SidebarFloatingTint")) {
+        auto border = Obj<muxc::Border>(h);
+        if (!border) continue;
+        try {
+            auto bg = border.Background();
+            std::vector<winrt::Windows::UI::Color> stops;
+            if (auto sb = bg.try_as<muxm::SolidColorBrush>()) {
+                stops.push_back(sb.Color());
+            } else if (auto gb = bg.try_as<muxm::GradientBrush>()) {
+                for (auto const& stop : gb.GradientStops()) stops.push_back(stop.Color());
+            }
+            bool found = false;
+            int bestSat = -1;
+            winrt::Windows::UI::Color best{};
+            for (auto c : stops) {
+                if (c.A < 0x40) continue;
+                int sat = (std::max)({c.R, c.G, c.B}) - (std::min)({c.R, c.G, c.B});
+                if (sat > bestSat) {
+                    bestSat = sat;
+                    best = c;
+                    found = true;
+                }
+            }
+            if (found) {
+                out = best;
+                return true;
+            }
+        } catch (...) {}
+    }
+    try {
+        // No Dia palette yet: use the Windows accent rather than a grey wash.
+        static winrt::Windows::UI::ViewManagement::UISettings settings;
+        out = settings.GetColorValue(winrt::Windows::UI::ViewManagement::UIColorType::Accent);
+        return out.A != 0;
+    } catch (...) {}
+    return false;
+}
+
+// The tint has to stay translucent: Mica/Acrylic still provide the backdrop,
+// this brush only adds the space/profile colour on top of it.
+static constexpr uint8_t kMaterialTintAlpha = 0x66;
+// "Translucent sidebar" asks for the Settings window's see-through look while
+// the sidebar is open, so the tint thins out there but keeps the same RGB (the
+// space colour) and stays stronger when the sidebar is hidden. The Tune-ups
+// slider decides how far it thins out (100 % = this floor).
+static constexpr uint8_t kTranslucentTintAlpha = 0x00;
+
+static std::wstring DescribeBrush(const muxm::Brush& brush);
+
+// Tune-ups "Translucency" slider: 0 % keeps the space colour, 100 % leaves
+// just the backdrop while the sidebar is open. With the sidebar hidden the
+// tint stays at its full strength so the chrome does not wash out.
+static uint8_t MaterialTintAlpha(bool sidebarOpen) {
+    if (!sidebarOpen) return kMaterialTintAlpha;
+    int transparency = g_materialTransparency.load();
+    if (transparency < 0) transparency = 0;
+    if (transparency > 100) transparency = 100;
+    int alpha = (static_cast<int>(kMaterialTintAlpha) * (100 - transparency) +
+                 static_cast<int>(kTranslucentTintAlpha) * transparency + 50) /
+                100;
+    if (alpha < 0) alpha = 0;
+    if (alpha > 0xFF) alpha = 0xFF;
+    return static_cast<uint8_t>(alpha);
+}
 
 static void UpdateWindowMaterial() {
     std::wstring kind = g_cfg.windowMaterial;
@@ -2772,13 +2990,13 @@ static void UpdateWindowMaterial() {
         if (!src) continue;
 
         std::wstring want = on ? kind : L"";
-        if (m.applied == want) {
-            // Dia may repaint the background; keep it see-through while the material is on.
-            if (on)
-                if (auto p = m.panel.get(); p && p.Background() != m.clear) p.Background(m.clear);
-            continue;
-        }
-
+        bool sidebarOpen = g_translucentSidebar.load() && IsSidebarOpen();
+        // Requested "more transparent" with a visible sidebar: Mica's darkened
+        // wallpaper is too subtle there, so use Acrylic for that state while the
+        // chosen material still governs the rest.
+        std::wstring effective = want;
+        if (sidebarOpen && (want == L"mica" || want == L"micaalt" || want == L"micaAlt"))
+            effective = L"acrylic";
         auto panel = m.panel.get();
         if (!panel) {
             panel = WindowBackgroundPanel(m.root);
@@ -2788,30 +3006,272 @@ static void UpdateWindowMaterial() {
             }
         }
 
-        if (want.empty()) {
-            src.SystemBackdrop(nullptr);
-            if (panel) panel.Background(m.savedBrush);
-        } else {
-            if (want == L"acrylic") {
-                src.SystemBackdrop(muxm::DesktopAcrylicBackdrop());
+        if (m.applied != effective) {
+            if (effective.empty()) {
+                src.SystemBackdrop(nullptr);
+                if (panel) panel.Background(m.savedBrush);
             } else {
-                muxm::MicaBackdrop mica;
-                if (want == L"micaalt" || want == L"micaAlt") {
-                    mica.Kind(winrt::Microsoft::UI::Composition::SystemBackdrops::MicaKind::BaseAlt);
+                if (effective == L"acrylic") {
+                    src.SystemBackdrop(muxm::DesktopAcrylicBackdrop());
+                } else {
+                    muxm::MicaBackdrop mica;
+                    if (effective == L"micaalt" || effective == L"micaAlt") {
+                        mica.Kind(winrt::Microsoft::UI::Composition::SystemBackdrops::MicaKind::BaseAlt);
+                    }
+                    src.SystemBackdrop(mica);
                 }
-                src.SystemBackdrop(mica);
             }
-            // Clear Dia's panel colour so the backdrop shines through; restored when off.
-            if (panel) panel.Background(m.clear);
+            m.applied = effective;
+            Log(L"windowMaterial: %s", effective.empty() ? L"off" : effective.c_str());
         }
-        m.applied = want;
-        Log(L"windowMaterial: %s", want.empty() ? L"off" : want.c_str());
+
+        if (on && panel) {
+            winrt::Windows::UI::Color color{};
+            if (ThemeTintColor(color)) {
+                color.A = MaterialTintAlpha(sidebarOpen);
+                if (!m.tintBrush) m.tintBrush = muxm::SolidColorBrush(color);
+                else if (m.tintBrush.Color() != color) m.tintBrush.Color(color);
+                m.tint = color;
+                if (panel.Background() != m.tintBrush) panel.Background(m.tintBrush);
+            } else if (panel.Background() != m.savedBrush) {
+                // No colour available: keep the backdrop visible without a tint.
+                panel.Background(nullptr);
+            }
+        }
     }
 
     if (!on)
         t_material.erase(std::remove_if(t_material.begin(), t_material.end(),
                                         [](const MaterialState& m) { return m.applied.empty(); }),
                          t_material.end());
+}
+
+// --- Translucent sidebar
+// Dia paints the docked sidebar with an opaque gradient (its space colour).
+// Fading that brush in place keeps the colour but lets the window material
+// (Mica/Acrylic) show through, matching the translucent Settings window.
+static constexpr uint8_t kSidebarPaintAlpha = 0x59;
+
+static muxm::Brush GetElBackground(const mux::DependencyObject& d) {
+    try {
+        if (auto b = d.try_as<muxc::Border>()) return b.Background();
+        if (auto g = d.try_as<muxc::Grid>()) return g.Background();
+        if (auto p = d.try_as<muxc::Panel>()) return p.Background();
+        if (auto c = d.try_as<muxc::ContentControl>()) return c.Background();
+        if (auto cp = d.try_as<muxc::ContentPresenter>()) return cp.Background();
+        if (auto r = d.try_as<muxsh::Rectangle>()) return r.Fill();
+        if (auto pa = d.try_as<muxsh::Path>()) return pa.Fill();
+        if (auto e = d.try_as<muxsh::Ellipse>()) return e.Fill();
+    } catch (...) {}
+    return nullptr;
+}
+
+static void SetElBackground(const mux::DependencyObject& d, const muxm::Brush& brush) {
+    if (auto b = d.try_as<muxc::Border>()) { b.Background(brush); return; }
+    if (auto g = d.try_as<muxc::Grid>()) { g.Background(brush); return; }
+    if (auto p = d.try_as<muxc::Panel>()) { p.Background(brush); return; }
+    if (auto c = d.try_as<muxc::ContentControl>()) { c.Background(brush); return; }
+    if (auto cp = d.try_as<muxc::ContentPresenter>()) { cp.Background(brush); return; }
+    if (auto r = d.try_as<muxsh::Rectangle>()) { r.Fill(brush); return; }
+    if (auto pa = d.try_as<muxsh::Path>()) { pa.Fill(brush); return; }
+    if (auto e = d.try_as<muxsh::Ellipse>()) { e.Fill(brush); return; }
+}
+
+static std::wstring DescribeBrush(const muxm::Brush& brush) {
+    if (!brush) return L"null";
+    wchar_t buf[96]{};
+    try {
+        if (auto sb = brush.try_as<muxm::SolidColorBrush>()) {
+            auto c = sb.Color();
+            swprintf_s(buf, L"solid #%02X%02X%02X%02X", c.A, c.R, c.G, c.B);
+            return buf;
+        }
+        if (auto gb = brush.try_as<muxm::GradientBrush>()) {
+            std::wstring out = brush.try_as<muxm::LinearGradientBrush>() ? L"linear" : L"gradient";
+            for (auto const& st : gb.GradientStops()) {
+                auto c = st.Color();
+                swprintf_s(buf, L" [%.2f #%02X%02X%02X%02X]", st.Offset(), c.A, c.R, c.G, c.B);
+                out += buf;
+            }
+            return out;
+        }
+        return std::wstring(L"other:") + std::wstring(winrt::get_class_name(brush));
+    } catch (...) {}
+    return L"other";
+}
+
+static bool BrushHasOpaqueStop(const muxm::Brush& brush) {
+    try {
+        if (auto sb = brush.try_as<muxm::SolidColorBrush>()) return sb.Color().A >= 0x80;
+        if (auto gb = brush.try_as<muxm::GradientBrush>())
+            for (auto const& st : gb.GradientStops())
+                if (st.Color().A >= 0x80) return true;
+    } catch (...) {}
+    return false;
+}
+
+static uint32_t BrushSignature(const muxm::Brush& brush) {
+    uint32_t h = 2166136261u;
+    try {
+        auto mix = [&](winrt::Windows::UI::Color c, double offset) {
+            uint32_t v = (static_cast<uint32_t>(c.A) << 24) | (static_cast<uint32_t>(c.R) << 16) |
+                         (static_cast<uint32_t>(c.G) << 8) | c.B;
+            h = (h ^ v) * 16777619u;
+            h = (h ^ static_cast<uint32_t>(offset * 1000)) * 16777619u;
+        };
+        if (auto sb = brush.try_as<muxm::SolidColorBrush>()) {
+            mix(sb.Color(), 0);
+        } else if (auto gb = brush.try_as<muxm::GradientBrush>()) {
+            for (auto const& st : gb.GradientStops()) mix(st.Color(), st.Offset());
+        }
+    } catch (...) {}
+    return h;
+}
+
+static muxm::Brush CloneBrushWithAlpha(const muxm::Brush& src, uint8_t alpha) {
+    if (!src) return nullptr;
+    try {
+        if (auto sb = src.try_as<muxm::SolidColorBrush>()) {
+            auto c = sb.Color();
+            c.A = alpha;
+            return muxm::SolidColorBrush(c);
+        }
+        if (auto lg = src.try_as<muxm::LinearGradientBrush>()) {
+            muxm::LinearGradientBrush out;
+            out.StartPoint(lg.StartPoint());
+            out.EndPoint(lg.EndPoint());
+            out.MappingMode(lg.MappingMode());
+            out.SpreadMethod(lg.SpreadMethod());
+            for (auto const& st : lg.GradientStops()) {
+                auto c = st.Color();
+                c.A = alpha;
+                muxm::GradientStop copy;
+                copy.Color(c);
+                copy.Offset(st.Offset());
+                out.GradientStops().Append(copy);
+            }
+            return out;
+        }
+    } catch (...) {}
+    return nullptr;
+}
+
+struct SidebarPaintState {
+    winrt::weak_ref<mux::DependencyObject> el;
+    muxm::Brush saved{nullptr};
+    muxm::Brush applied{nullptr};
+    uint32_t signature = 0;
+    bool valid = false;
+};
+static thread_local SidebarPaintState t_sidebarPaint;
+
+static void UpdateSidebarTranslucency() {
+    bool on = g_translucentSidebar.load();
+
+    if (!on) {
+        if (t_sidebarPaint.valid) {
+            if (auto el = t_sidebarPaint.el.get()) {
+                try { SetElBackground(el, t_sidebarPaint.saved); } catch (...) {}
+            }
+            t_sidebarPaint = {};
+        }
+        return;
+    }
+
+    auto el = t_sidebarPaint.el.get();
+    if (!el || !t_sidebarPaint.valid) {
+        // Dia paints the docked sidebar with the window backdrop, so there is
+        // usually no local brush to fade. Scan occasionally (not every tick) in
+        // case a floating sidebar paints one.
+        static thread_local ULONGLONG s_nextScan = 0;
+        ULONGLONG now = GetTickCount64();
+        if (s_nextScan && now < s_nextScan) return;
+        s_nextScan = now + 5000;
+
+        mux::DependencyObject best{nullptr};
+        double bestArea = 0;
+        // The space colour is usually a gradient on an ancestor of the sidebar
+        // (SpacePagingRoot) rather than on the sidebar itself: fade the nearest
+        // opaque one so the gradient stays but Mica/Acrylic shows through.
+        for (auto h : FindNodes(L"SidebarBorder")) {
+            for (auto p = GetParentHandle(h); p; p = GetParentHandle(p)) {
+                auto fe = Obj<mux::FrameworkElement>(p);
+                auto dep = Obj<mux::DependencyObject>(p);
+                if (!fe || !dep) continue;
+                if (fe.ActualWidth() < 100 || fe.ActualHeight() < 100) continue;
+                if (fe.Visibility() != mux::Visibility::Visible) continue;
+                auto bg = GetElBackground(dep);
+                if (!bg) continue;
+                Log(L"sidebar paint: ancestor '%s' %s %.0fx%.0f bg=%s",
+                    std::wstring(fe.Name()).c_str(),
+                    std::wstring(winrt::get_class_name(dep)).c_str(),
+                    fe.ActualWidth(), fe.ActualHeight(), DescribeBrush(bg).c_str());
+                if (BrushHasOpaqueStop(bg)) {
+                    best = dep;
+                    bestArea = fe.ActualWidth() * fe.ActualHeight();
+                    break;
+                }
+            }
+            if (best) break;
+        }
+        for (auto h : FindNodes(L"SidebarBorder")) {
+            if (best) break;
+            auto root = Obj<mux::DependencyObject>(h);
+            if (!root) continue;
+            std::vector<mux::DependencyObject> stack{root};
+            int guard = 0;
+            while (!stack.empty() && guard++ < 400) {
+                auto cur = stack.back();
+                stack.pop_back();
+                auto fe = cur.try_as<mux::FrameworkElement>();
+                if (!fe) continue;
+                double w = fe.ActualWidth(), hgt = fe.ActualHeight();
+                if (w >= 100 && hgt >= 100 && fe.Visibility() == mux::Visibility::Visible) {
+                    auto bg = GetElBackground(cur);
+                    if (bg && BrushHasOpaqueStop(bg)) {
+                        double area = w * hgt;
+                        if (area > bestArea) {
+                            bestArea = area;
+                            best = cur;
+                        }
+                    }
+                }
+                int count = muxm::VisualTreeHelper::GetChildrenCount(cur);
+                for (int i = 0; i < count; ++i) stack.push_back(muxm::VisualTreeHelper::GetChild(cur, i));
+            }
+        }
+        if (!best) return;
+        t_sidebarPaint.el = winrt::make_weak(best);
+        t_sidebarPaint.saved = GetElBackground(best);
+        t_sidebarPaint.signature = BrushSignature(t_sidebarPaint.saved);
+        t_sidebarPaint.applied = CloneBrushWithAlpha(t_sidebarPaint.saved, kSidebarPaintAlpha);
+        t_sidebarPaint.valid = t_sidebarPaint.applied != nullptr;
+        el = best;
+        Log(L"sidebar paint: fading '%s' with %s",
+            std::wstring(best.try_as<mux::FrameworkElement>().Name()).c_str(),
+            DescribeBrush(t_sidebarPaint.applied).c_str());
+    }
+
+    if (!el || !t_sidebarPaint.valid) return;
+
+    // Dia may swap the brush when the profile/space colour changes: follow it.
+    auto current = GetElBackground(el);
+    if (current != t_sidebarPaint.applied) {
+        t_sidebarPaint.saved = current;
+        t_sidebarPaint.signature = BrushSignature(current);
+        t_sidebarPaint.applied = CloneBrushWithAlpha(current, kSidebarPaintAlpha);
+        if (!t_sidebarPaint.applied) { t_sidebarPaint = {}; return; }
+    } else {
+        uint32_t sig = BrushSignature(t_sidebarPaint.saved);
+        if (sig != t_sidebarPaint.signature) {
+            t_sidebarPaint.signature = sig;
+            t_sidebarPaint.applied = CloneBrushWithAlpha(t_sidebarPaint.saved, kSidebarPaintAlpha);
+            if (!t_sidebarPaint.applied) { t_sidebarPaint = {}; return; }
+        }
+    }
+    if (current != t_sidebarPaint.applied) {
+        try { SetElBackground(el, t_sidebarPaint.applied); } catch (...) {}
+    }
 }
 
 // --- Clean Search Box
@@ -3115,87 +3575,116 @@ struct NewTabState {
 };
 static thread_local std::vector<NewTabState> t_newTabStates;
 
+// Created lazily on the UI thread: a namespace-scope WinRT object would be
+// constructed during DllMain on the loader thread, before XAML exists.
+static const muxm::SolidColorBrush& ClearBrush() {
+    static muxm::SolidColorBrush brush{winrt::Windows::UI::Color{0, 0, 0, 0}};
+    return brush;
+}
+
+// Clearing a background hides Dia's page-adaptive toolbar palette for good:
+// the site palette lives in local values/brushes, and ClearValue drops it. Keep
+// each element's own value (and binding) so turning transparency or the New Tab
+// painting off hands the toolbar back to Dia exactly as it was.
+struct ClearSaved {
+    winrt::weak_ref<mux::DependencyObject> el;
+    mux::DependencyProperty dp{nullptr};
+    Inspectable value{nullptr};
+    muxd::BindingBase binding{nullptr};
+    bool thickness = false;
+    mux::Thickness savedThickness{};
+};
+static thread_local std::map<std::pair<void*, void*>, ClearSaved> t_clearSaved;
+
+static void ClearBackground(const mux::DependencyObject& d, const mux::DependencyProperty& dp) {
+    if (!d || !dp) return;
+    auto key = std::make_pair(winrt::get_abi(d), winrt::get_abi(dp));
+    auto it = t_clearSaved.find(key);
+    if (it == t_clearSaved.end()) {
+        ClearSaved s;
+        s.el = winrt::make_weak(d);
+        s.dp = dp;
+        if (auto fe = d.try_as<mux::FrameworkElement>()) {
+            try {
+                if (auto be = fe.GetBindingExpression(dp)) s.binding = be.ParentBinding();
+            } catch (...) {}
+        }
+        if (!s.binding) {
+            try {
+                auto v = d.ReadLocalValue(dp);
+                if (v && v != mux::DependencyProperty::UnsetValue()) s.value = v;
+            } catch (...) {}
+        }
+        it = t_clearSaved.emplace(key, s).first;
+    } else {
+        // Dia may paint a new site palette while we hide the toolbar: keep that
+        // newer color for the restore instead of the stale one.
+        try {
+            auto v = d.ReadLocalValue(dp);
+            if (v && v != mux::DependencyProperty::UnsetValue() && v != ClearBrush()) {
+                it->second.value = v;
+                it->second.binding = nullptr;
+            }
+        } catch (...) {}
+    }
+    try { d.SetValue(dp, ClearBrush()); } catch (...) {}
+}
+
+static void ClearThickness(const muxc::Border& b) {
+    if (!b) return;
+    auto key = std::make_pair(winrt::get_abi(b), winrt::get_abi(muxc::Border::BorderThicknessProperty()));
+    if (!t_clearSaved.count(key)) {
+        ClearSaved s;
+        s.el = winrt::make_weak(b.as<mux::DependencyObject>());
+        s.dp = muxc::Border::BorderThicknessProperty();
+        s.thickness = true;
+        s.savedThickness = b.BorderThickness();
+        t_clearSaved.emplace(key, s);
+    }
+    try { b.BorderThickness(mux::Thickness{0, 0, 0, 0}); } catch (...) {}
+}
+
+static void RestoreClearSubtree() {
+    for (auto& [key, s] : t_clearSaved) {
+        auto d = s.el.get();
+        if (!d) continue;
+        try {
+            if (s.thickness) {
+                if (auto b = d.try_as<muxc::Border>()) b.BorderThickness(s.savedThickness);
+            } else if (s.binding) {
+                if (auto fe = d.try_as<mux::FrameworkElement>()) fe.SetBinding(s.dp, s.binding);
+            } else if (s.value) {
+                d.SetValue(s.dp, s.value);
+            } else {
+                d.ClearValue(s.dp);
+            }
+        } catch (...) {}
+    }
+    t_clearSaved.clear();
+}
+
 static void MakeSubtreeClear(const mux::DependencyObject& root, int depth = 0) {
     if (!root || depth > 12) return;
-    static muxm::SolidColorBrush s_clearBrush{winrt::Windows::UI::Color{0, 0, 0, 0}};
     if (auto p = root.try_as<muxc::Panel>()) {
-        try {
-            if (p.Background() != s_clearBrush) p.Background(s_clearBrush);
-        } catch (...) {}
+        ClearBackground(root, muxc::Panel::BackgroundProperty());
     } else if (auto cp = root.try_as<muxc::ContentPresenter>()) {
-        try {
-            if (cp.Background() != s_clearBrush) cp.Background(s_clearBrush);
-        } catch (...) {}
-    } else if (auto cc = root.try_as<muxc::ContentControl>()) {
-        try {
-            if (cc.Background() != s_clearBrush) cc.Background(s_clearBrush);
-        } catch (...) {}
+        ClearBackground(root, muxc::ContentPresenter::BackgroundProperty());
+    } else if (root.try_as<muxc::ContentControl>()) {
+        ClearBackground(root, muxc::Control::BackgroundProperty());
     } else if (auto b = root.try_as<muxc::Border>()) {
         try {
             std::wstring bName(b.Name());
-            if (bName != L"AssistantBar") {
-                if (b.Background() != s_clearBrush) b.Background(s_clearBrush);
-            }
+            if (bName != L"AssistantBar") ClearBackground(root, muxc::Border::BackgroundProperty());
             if (bName == L"BottomSeparator" || b.BorderThickness().Top > 0 || b.BorderThickness().Bottom > 0) {
-                b.BorderThickness(mux::Thickness{0, 0, 0, 0});
+                ClearThickness(b);
             }
         } catch (...) {}
-    } else if (auto c = root.try_as<muxc::Control>()) {
-        try {
-            if (c.Background() != s_clearBrush) c.Background(s_clearBrush);
-        } catch (...) {}
+    } else if (root.try_as<muxc::Control>()) {
+        ClearBackground(root, muxc::Control::BackgroundProperty());
     }
     int count = muxm::VisualTreeHelper::GetChildrenCount(root);
     for (int i = 0; i < count; ++i) {
         MakeSubtreeClear(muxm::VisualTreeHelper::GetChild(root, i), depth + 1);
-    }
-}
-
-static muxm::Brush GetDiaNavBackgroundBrush() {
-    try {
-        auto app = mux::Application::Current();
-        if (app) {
-            auto res = app.Resources();
-            if (res) {
-                if (res.HasKey(winrt::box_value(L"NavigationBarBackgroundBrush"))) {
-                    return res.Lookup(winrt::box_value(L"NavigationBarBackgroundBrush")).try_as<muxm::Brush>();
-                }
-                if (res.HasKey(winrt::box_value(L"SolidBackgroundFillColorTertiaryBrush"))) {
-                    return res.Lookup(winrt::box_value(L"SolidBackgroundFillColorTertiaryBrush")).try_as<muxm::Brush>();
-                }
-                if (res.HasKey(winrt::box_value(L"SolidBackgroundFillColorBaseBrush"))) {
-                    return res.Lookup(winrt::box_value(L"SolidBackgroundFillColorBaseBrush")).try_as<muxm::Brush>();
-                }
-            }
-        }
-    } catch (...) {}
-    return nullptr;
-}
-
-static void RestoreSubtree(const mux::DependencyObject& root, int depth = 0) {
-    if (!root || depth > 12) return;
-    if (auto p = root.try_as<muxc::Panel>()) {
-        try { p.ClearValue(muxc::Panel::BackgroundProperty()); } catch (...) {}
-    } else if (auto cp = root.try_as<muxc::ContentPresenter>()) {
-        try { cp.ClearValue(muxc::ContentPresenter::BackgroundProperty()); } catch (...) {}
-    } else if (auto cc = root.try_as<muxc::ContentControl>()) {
-        try { cc.ClearValue(muxc::Control::BackgroundProperty()); } catch (...) {}
-    } else if (auto b = root.try_as<muxc::Border>()) {
-        try {
-            std::wstring bName(b.Name());
-            if (bName != L"AssistantBar") {
-                b.ClearValue(muxc::Border::BackgroundProperty());
-            }
-            if (bName == L"BottomSeparator") {
-                b.ClearValue(muxc::Border::BorderThicknessProperty());
-            }
-        } catch (...) {}
-    } else if (auto c = root.try_as<muxc::Control>()) {
-        try { c.ClearValue(muxc::Control::BackgroundProperty()); } catch (...) {}
-    }
-    int count = muxm::VisualTreeHelper::GetChildrenCount(root);
-    for (int i = 0; i < count; ++i) {
-        RestoreSubtree(muxm::VisualTreeHelper::GetChild(root, i), depth + 1);
     }
 }
 
@@ -3246,28 +3735,8 @@ static void UpdateNewTabPainting() {
                     }
                 }
             }
-            for (auto ch : FindNodes(L"NavigationChromeHost")) {
-                if (auto g = Obj<muxc::Grid>(ch)) {
-                    RestoreSubtree(g);
-                    if (!g.Background()) {
-                        if (auto b = GetDiaNavBackgroundBrush()) g.Background(b);
-                    }
-                }
-            }
-            for (auto ch : FindNodes(L"NavigationBarHost")) {
-                if (auto cc = Obj<muxc::ContentControl>(ch)) RestoreSubtree(cc);
-            }
-            for (auto ch : FindNodes(L"NavigationBarContent")) {
-                if (auto g = Obj<muxc::Grid>(ch)) {
-                    RestoreSubtree(g);
-                    if (!g.Background()) {
-                        if (auto b = GetDiaNavBackgroundBrush()) g.Background(b);
-                    }
-                }
-            }
-            for (auto ch : FindNodes(L"ContentHost")) {
-                if (auto cc = Obj<muxc::ContentControl>(ch)) cc.Background(nullptr);
-            }
+            // Hand the toolbar back to Dia's own site palette (not a solid grey).
+            RestoreClearSubtree();
             t_newTabStates.clear();
         }
         return;
@@ -3357,7 +3826,7 @@ static void UpdateNewTabPainting() {
                     mux::DependencyObject parent = muxm::VisualTreeHelper::GetParent(g);
                     if (parent) {
                         if (auto pg = parent.try_as<muxc::Panel>()) {
-                            if (pg.Background() != clearBrush && pg.Background() != nullptr) pg.Background(clearBrush);
+                            ClearBackground(pg, muxc::Panel::BackgroundProperty());
                         }
                     }
                 } catch (...) {}
@@ -3371,7 +3840,7 @@ static void UpdateNewTabPainting() {
         }
         for (auto ch : FindNodes(L"ContentHost")) {
             if (auto cc = Obj<muxc::ContentControl>(ch)) {
-                if (cc.Background() != clearBrush) cc.Background(clearBrush);
+                ClearBackground(cc, muxc::Control::BackgroundProperty());
             }
         }
         for (auto bsHandle : FindNodes(L"BottomSeparator")) {
@@ -4452,6 +4921,238 @@ static void UpdateSegoeUiVariable() {
     }
 }
 
+// ---------------------------------------------------------------- Noto emoji font
+// Emoji are not drawn because an element names a font family. The text stack
+// asks for the element's family (Segoe UI Variable, say) and DirectWrite's
+// fallback swaps Segoe UI Emoji in for the emoji code points, so there is no
+// "Segoe UI Emoji" property to replace. This tweak puts the Noto family in
+// front of the family an element already uses, but only on elements whose text
+// actually carries an emoji. Noto has no Latin glyphs, so ordinary text in the
+// same run falls through to the font it would have used anyway, while the
+// emoji resolve to Noto before Segoe UI Emoji is ever considered.
+
+struct SavedEmojiFamily {
+    muxm::FontFamily originalFamily{nullptr};
+    bool hadLocal = false;
+};
+static thread_local std::map<InstanceHandle, SavedEmojiFamily> t_savedEmojiFamilies;
+
+// Segoe Fluent Icons and Segoe MDL2 keep their glyph font: their code points
+// sit in the private use area and must never be pointed at an emoji family.
+static bool UsesIconFont(const muxm::FontFamily& family) {
+    if (!family) return false;
+    const std::wstring src(family.Source());
+    return src.find(L"Fluent Icons") != std::wstring::npos ||
+           src.find(L"MDL2") != std::wstring::npos ||
+           src.find(L"Segoe UI Symbol") != std::wstring::npos;
+}
+
+// U+FE0F asks for emoji presentation on its own, so it counts by itself. The
+// rest are the BMP and astral code points Unicode calls emoji; check marks and
+// arrows that Windows normally draws as text are deliberately left out.
+static bool IsEmojiCodePoint(unsigned cp) {
+    if (cp == 0xFE0F) return true;
+    if (cp >= 0x1F000 && cp <= 0x1FAFF) return true;  // emoji, flags, skin tones
+    if (cp >= 0x2600 && cp <= 0x26FF) return true;    // misc symbols
+    if (cp == 0x2705 || cp == 0x2728 || cp == 0x274C || cp == 0x274E ||
+        (cp >= 0x2753 && cp <= 0x2755) || cp == 0x2757 || cp == 0x2764 ||
+        (cp >= 0x2795 && cp <= 0x2797) || cp == 0x27A1 || cp == 0x27B0 || cp == 0x27BF)
+        return true;                                  // coloured dingbats
+    if ((cp >= 0x2B05 && cp <= 0x2B07) || cp == 0x2B1B || cp == 0x2B1C ||
+        cp == 0x2B50 || cp == 0x2B55)
+        return true;
+    if ((cp >= 0x231A && cp <= 0x231B) || cp == 0x2328 ||
+        (cp >= 0x23E9 && cp <= 0x23EC) || cp == 0x23F0 || cp == 0x23F3 ||
+        (cp >= 0x25FD && cp <= 0x25FE) || (cp >= 0x2614 && cp <= 0x2615) ||
+        (cp >= 0x2648 && cp <= 0x2653) || cp == 0x267F || cp == 0x2693 ||
+        cp == 0x26A1 || (cp >= 0x26AA && cp <= 0x26AB) ||
+        (cp >= 0x26BD && cp <= 0x26BE) || (cp >= 0x26C4 && cp <= 0x26C5) ||
+        cp == 0x26CE || cp == 0x26D4 || cp == 0x26EA ||
+        (cp >= 0x26F2 && cp <= 0x26F3) || cp == 0x26F5 || cp == 0x26FA ||
+        cp == 0x26FD || (cp >= 0x270A && cp <= 0x270B))
+        return true;
+    return false;
+}
+
+static bool TextHasEmoji(const std::wstring& text) {
+    for (size_t i = 0; i < text.size(); i++) {
+        wchar_t c = text[i];
+        unsigned cp = static_cast<unsigned>(c);
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < text.size()) {
+            const wchar_t low = text[i + 1];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                cp = 0x10000 + ((static_cast<unsigned>(c) - 0xD800) << 10) +
+                     (static_cast<unsigned>(low) - 0xDC00);
+                i++;
+            }
+        }
+        if (IsEmojiCodePoint(cp)) return true;
+    }
+    return false;
+}
+
+static std::wstring BoxedText(const Inspectable& value) {
+    if (!value) return L"";
+    try {
+        return std::wstring(winrt::unbox_value<winrt::hstring>(value));
+    } catch (...) {
+        return L"";
+    }
+}
+
+static std::wstring RichTextText(const muxc::RichTextBlock& rtb) {
+    std::wstring text;
+    try {
+        for (auto const& block : rtb.Blocks()) {
+            auto paragraph = block.try_as<winrt::Microsoft::UI::Xaml::Documents::Paragraph>();
+            if (!paragraph) continue;
+            for (auto const& item : paragraph.Inlines()) {
+                if (auto run = item.try_as<winrt::Microsoft::UI::Xaml::Documents::Run>()) {
+                    text += std::wstring(run.Text());
+                    if (text.size() > 400) return text;  // a glimpse is enough
+                }
+            }
+        }
+    } catch (...) {}
+    return text;
+}
+
+static int CALLBACK CountFontFamilyProc(const LOGFONTW*, const TEXTMETRICW*, DWORD, LPARAM data) {
+    ++*reinterpret_cast<int*>(data);
+    return 1;  // one match is enough
+}
+
+static bool FontFamilyInstalled(const std::wstring& family) {
+    HDC dc = CreateCompatibleDC(nullptr);
+    if (!dc) return false;
+    LOGFONTW lf{};
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lstrcpynW(lf.lfFaceName, family.c_str(), LF_FACESIZE);
+    int count = 0;
+    EnumFontFamiliesExW(dc, &lf, CountFontFamilyProc, reinterpret_cast<LPARAM>(&count), 0);
+    DeleteDC(dc);
+    return count > 0;
+}
+
+// Puts family in front of base, dropping any Noto family an earlier tick (or the
+// other Noto family, after a switch) already stacked there.
+static std::wstring EmojiChain(const std::wstring& family, std::wstring base) {
+    static const wchar_t* kEmojiFamilies[] = {L"Noto Color Emoji", L"Noto Emoji"};
+    for (auto name : kEmojiFamilies) {
+        const std::wstring prefix = std::wstring(name) + L", ";
+        if (base.compare(0, prefix.size(), prefix) == 0) {
+            base.erase(0, prefix.size());
+            break;
+        }
+    }
+    if (base.empty()) return family;
+    return family + L", " + base;
+}
+
+static void UpdateNotoEmoji() {
+    const bool on = g_notoEmoji.load();
+    const DWORD thread = GetCurrentThreadId();
+    const std::wstring family =
+        g_cfg.notoEmojiFont == L"notoMono" ? L"Noto Emoji" : L"Noto Color Emoji";
+
+    static thread_local bool s_lastOn = false;
+    static thread_local std::wstring s_lastFamily;
+
+    if (!on) {
+        s_lastOn = false;
+        s_lastFamily = family;
+        if (t_savedEmojiFamilies.empty()) return;
+
+        size_t restored = 0;
+        for (const auto& [handle, saved] : t_savedEmojiFamilies) {
+            Inspectable obj{nullptr};
+            if (!GetObject(handle, obj)) continue;
+            try {
+                if (auto tb = obj.try_as<muxc::TextBlock>()) {
+                    if (saved.hadLocal && saved.originalFamily) tb.FontFamily(saved.originalFamily);
+                    else tb.ClearValue(muxc::TextBlock::FontFamilyProperty());
+                    restored++;
+                } else if (auto cp = obj.try_as<muxc::ContentPresenter>()) {
+                    if (saved.hadLocal && saved.originalFamily) cp.FontFamily(saved.originalFamily);
+                    else cp.ClearValue(muxc::ContentPresenter::FontFamilyProperty());
+                    restored++;
+                } else if (auto rtb = obj.try_as<muxc::RichTextBlock>()) {
+                    if (saved.hadLocal && saved.originalFamily) rtb.FontFamily(saved.originalFamily);
+                    else rtb.ClearValue(muxc::RichTextBlock::FontFamilyProperty());
+                    restored++;
+                } else if (auto ctrl = obj.try_as<muxc::Control>()) {
+                    if (saved.hadLocal && saved.originalFamily) ctrl.FontFamily(saved.originalFamily);
+                    else ctrl.ClearValue(muxc::Control::FontFamilyProperty());
+                    restored++;
+                }
+            } catch (...) {}
+        }
+        if (restored > 0) Log(L"notoEmoji: restored %zu elements", restored);
+        t_savedEmojiFamilies.clear();
+        return;
+    }
+
+    const bool first = !s_lastOn || s_lastFamily != family;
+    s_lastOn = true;
+    s_lastFamily = family;
+
+    if (first) {
+        Log(L"notoEmoji: using %s (installed: %d)", family.c_str(),
+            FontFamilyInstalled(family) ? 1 : 0);
+    }
+
+    if (t_savedEmojiFamilies.size() > 2000) {
+        std::lock_guard<std::recursive_mutex> lock(g_mx);
+        for (auto it = t_savedEmojiFamilies.begin(); it != t_savedEmojiFamilies.end();) {
+            if (g_nodes.find(it->first) == g_nodes.end()) it = t_savedEmojiFamilies.erase(it);
+            else ++it;
+        }
+    }
+
+    std::vector<InstanceHandle> handles;
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_mx);
+        for (const auto& [handle, node] : g_nodes) {
+            if (node.thread == thread) handles.push_back(handle);
+        }
+    }
+
+    size_t touched = 0;
+    for (auto handle : handles) {
+        Inspectable obj{nullptr};
+        if (!GetObject(handle, obj)) continue;
+
+        auto apply = [&](auto element, mux::DependencyProperty prop, const std::wstring& text) {
+            if (text.empty() || !TextHasEmoji(text)) return;
+            auto ff = element.FontFamily();
+            if (UsesIconFont(ff)) return;
+            const std::wstring src = ff ? std::wstring(ff.Source()) : L"";
+            const std::wstring wanted = EmojiChain(family, src);
+            if (src == wanted) return;  // this tick's family is already stacked
+            if (t_savedEmojiFamilies.find(handle) == t_savedEmojiFamilies.end()) {
+                const bool hadLocal =
+                    element.ReadLocalValue(prop) != mux::DependencyProperty::UnsetValue();
+                t_savedEmojiFamilies[handle] = {hadLocal ? ff : muxm::FontFamily{nullptr}, hadLocal};
+            }
+            element.FontFamily(muxm::FontFamily(wanted.c_str()));
+            touched++;
+        };
+
+        try {
+            if (auto tb = obj.try_as<muxc::TextBlock>())
+                apply(tb, muxc::TextBlock::FontFamilyProperty(), std::wstring(tb.Text()));
+            else if (auto cp = obj.try_as<muxc::ContentPresenter>())
+                apply(cp, muxc::ContentPresenter::FontFamilyProperty(), BoxedText(cp.Content()));
+            else if (auto rtb = obj.try_as<muxc::RichTextBlock>())
+                apply(rtb, muxc::RichTextBlock::FontFamilyProperty(), RichTextText(rtb));
+            else if (auto ctrl = obj.try_as<muxc::ContentControl>())
+                apply(ctrl, muxc::Control::FontFamilyProperty(), BoxedText(ctrl.Content()));
+        } catch (...) {}
+    }
+
+    if (touched > 0) Log(L"notoEmoji: stacked %s on %zu elements", family.c_str(), touched);
+}
+
 struct Target {
     InstanceHandle handle = 0;
     std::wstring name;
@@ -4479,18 +5180,10 @@ static void EvaluateNode(const Target& target, DWORD thread) {
                 if (transparentToolbar) {
                     MakeSubtreeClear(fe);
                 } else {
-                    RestoreSubtree(fe);
-                    if (name == L"NavigationBarContent" || name == L"NavigationChromeHost") {
-                        if (auto p = fe.try_as<muxc::Panel>()) {
-                            if (!p.Background()) {
-                                if (auto b = GetDiaNavBackgroundBrush()) p.Background(b);
-                            }
-                        }
-                    }
+                    RestoreClearSubtree();
                 }
             }
         }
-        ApplyProperty(handle, L"Background", L"Microsoft.UI.Xaml.Media.SolidColorBrush", L"#00000000", transparentToolbar);
     } else if (name == L"BottomSeparator") {
         Inspectable obj{nullptr};
         if (GetObject(handle, obj)) {
@@ -4621,6 +5314,7 @@ static void ApplyAllOnThisThread() {
     UpdateHiddenToolbar();
     UpdateSquareCorners();
     UpdateWindowMaterial();
+    UpdateSidebarTranslucency();
     UpdateCleanSearchBox();
     UpdateNewTabPainting();
     UpdateDownloadsPopup();
@@ -4629,6 +5323,7 @@ static void ApplyAllOnThisThread() {
     UpdateHideLinkAddress();
     SettingsUi::CheckActiveSettingsPage();
     UpdateSegoeUiVariable();
+    UpdateNotoEmoji();
 }
 
 // ---------------------------------------------------------------- DWM & state sync
@@ -4878,6 +5573,7 @@ static bool GetTweakBool(const std::wstring& key) {
     if (key == L"keepWindowsActive") return g_cfg.keepWindowsActive;
     if (key == L"normalLaunch") return g_cfg.normalLaunch;
     if (key == L"segoeUiVariable") return g_cfg.segoeUiVariable;
+    if (key == L"notoEmoji") return g_cfg.notoEmoji;
     if (key == L"developerMode") return g_cfg.developerMode;
     if (key == L"developerModeLocalhost") return g_cfg.developerModeLocalhost;
     return false;
@@ -4894,6 +5590,7 @@ static std::wstring GetTweakString(const std::wstring& key) {
     if (key == L"peekTrigger") return g_cfg.peekTrigger;
     if (key == L"peekAnimation") return g_cfg.peekAnimation;
     if (key == L"profileEmojiText") return g_cfg.profileEmojiText;
+    if (key == L"notoEmojiFont") return g_cfg.notoEmojiFont;
     return L"";
 }
 
@@ -4909,6 +5606,13 @@ struct PaintingControlState {
     winrt::weak_ref<muxc::TextBlock> tintLabel;
 };
 static thread_local PaintingControlState t_paintingControls;
+
+struct MaterialControlState {
+    winrt::weak_ref<mux::FrameworkElement> card;
+    winrt::weak_ref<muxc::Slider> slider;
+    winrt::weak_ref<muxc::TextBlock> label;
+};
+static thread_local MaterialControlState t_materialControls;
 
 static void SyncToggles() {
     t_syncing = true;
@@ -4983,6 +5687,20 @@ static void SyncToggles() {
     }
     if (auto tl = t_paintingControls.tintLabel.get()) {
         tl.Text(std::to_wstring(g_cfg.newTabPaintingTint) + L"%");
+    }
+    if (auto c = t_materialControls.card.get()) {
+        bool materialOn = !g_cfg.windowMaterial.empty() && g_cfg.windowMaterial != L"default" &&
+                          g_cfg.windowMaterial != L"none";
+        c.Visibility(g_cfg.translucentSidebar && materialOn ? mux::Visibility::Visible
+                                                           : mux::Visibility::Collapsed);
+    }
+    if (auto s = t_materialControls.slider.get()) {
+        if (static_cast<int>(s.Value()) != g_cfg.materialTransparency) {
+            s.Value(g_cfg.materialTransparency);
+        }
+    }
+    if (auto l = t_materialControls.label.get()) {
+        l.Text(std::to_wstring(g_cfg.materialTransparency) + L"%");
     }
     t_syncing = false;
 }
@@ -5170,6 +5888,75 @@ static mux::FrameworkElement BuildRow(const TweakDef& t) {
     muxc::Grid::SetColumn(controls, 2);
     row.Children().Append(controls);
     return row;
+}
+
+static mux::FrameworkElement BuildMaterialOptionsRow() {
+    muxc::StackPanel card;
+    card.Padding(mux::Thickness{16, 12, 16, 14});
+    card.Spacing(10);
+    card.Background(BrushRes(L"CardBackgroundFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0x24, 0x24, 0x24}));
+    card.BorderBrush(t_card.border);
+    card.BorderThickness(mux::Thickness{1, 1, 1, 1});
+    card.CornerRadius(mux::CornerRadius{6, 6, 6, 6});
+    card.Margin(mux::Thickness{12, 6, 12, 6});
+
+    muxc::Grid headerGrid;
+    muxc::ColumnDefinition hc0, hc1;
+    hc0.Width(mux::GridLength{1, mux::GridUnitType::Star});
+    hc1.Width(mux::GridLengthHelper::Auto());
+    headerGrid.ColumnDefinitions().Append(hc0);
+    headerGrid.ColumnDefinitions().Append(hc1);
+
+    muxc::TextBlock header;
+    header.Text(L"Translucency");
+    header.FontSize(13);
+    header.FontWeight(winrt::Windows::UI::Text::FontWeight{600});
+    muxc::Grid::SetColumn(header, 0);
+    headerGrid.Children().Append(header);
+
+    muxc::TextBlock percent;
+    percent.Text(std::to_wstring(g_cfg.materialTransparency) + L"%");
+    percent.FontSize(13);
+    percent.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
+    muxc::Grid::SetColumn(percent, 1);
+    headerGrid.Children().Append(percent);
+    card.Children().Append(headerGrid);
+
+    muxc::TextBlock hint;
+    hint.Text(L"How much the space colour fades while the sidebar is open. 100% leaves only the window material.");
+    hint.FontSize(12);
+    hint.TextWrapping(mux::TextWrapping::Wrap);
+    hint.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
+    card.Children().Append(hint);
+
+    muxc::Slider slider;
+    slider.Minimum(0);
+    slider.Maximum(100);
+    slider.StepFrequency(1);
+    slider.Value(g_cfg.materialTransparency);
+    slider.Margin(mux::Thickness{0, -4, 0, 4});
+    card.Children().Append(slider);
+
+    slider.ValueChanged([percent](auto&&, muxc::Primitives::RangeBaseValueChangedEventArgs const& e) {
+        if (t_syncing) return;
+        int val = static_cast<int>(e.NewValue());
+        percent.Text(std::to_wstring(val) + L"%");
+        g_cfg.materialTransparency = val;
+        g_materialTransparency.store(val);
+        ApplyAllOnThisThread();
+        WritePrivateProfileStringW(L"tweaks", L"materialTransparency", std::to_wstring(val).c_str(), g_configPath);
+        UpdateStateJson(L"materialTransparency", std::to_wstring(val));
+    });
+
+    t_materialControls.card = winrt::make_weak(card.as<mux::FrameworkElement>());
+    t_materialControls.slider = winrt::make_weak(slider);
+    t_materialControls.label = winrt::make_weak(percent);
+
+    bool materialOn = !g_cfg.windowMaterial.empty() && g_cfg.windowMaterial != L"default" &&
+                      g_cfg.windowMaterial != L"none";
+    card.Visibility(g_cfg.translucentSidebar && materialOn ? mux::Visibility::Visible
+                                                           : mux::Visibility::Collapsed);
+    return card;
 }
 
 static mux::FrameworkElement BuildGrainOptionsRow() {
@@ -6504,6 +7291,7 @@ static mux::FrameworkElement BuildPage(const NavHook& hook) {
     winRows.push_back(BuildRow({L"squareSidebarCorners", L"Square window corners", L"Square the window corners instead of the rounded corners Windows 11 draws.", L"\uE7F4"}));
     winRows.push_back(BuildRow({L"windowMaterial", L"Window material", L"Apply Mica, Mica Alt, or Acrylic backdrop material behind the tabs and sidebar.", L"\uE790",
         {{L"default", L"Default"}, {L"mica", L"Mica"}, {L"acrylic", L"Acrylic"}, {L"micaalt", L"Mica Alt"}, {L"none", L"None"}}}));
+    winRows.push_back(BuildMaterialOptionsRow());
     winRows.push_back(BuildRow({L"keepWindowsActive", L"Keep display awake", L"Stop the screen from sleeping while Dia is open.", L"\uEC46"}));
     winRows.push_back(BuildRow({L"normalLaunch", L"Patch Dia however it's opened", L"Keep tweaks active whenever Dia opens from any shortcut, pinned icon, or link.", L"\uE7E8"}));
     stack.Children().Append(BuildSection(L"Window", winRows));
@@ -6560,6 +7348,9 @@ static mux::FrameworkElement BuildPage(const NavHook& hook) {
     pageRows.push_back(BuildRow({L"dontPopUpDownloads", L"Don't pop up downloads", L"Stops the downloads list from opening by itself for each download.", L"\uE896"}));
     pageRows.push_back(BuildRow({L"hideUpgradeBanner", L"Hide upgrade banner", L"Hide the Chat usage and upgrade card under the command bar.", L"\uE8BD"}));
     pageRows.push_back(BuildRow({L"segoeUiVariable", L"Force Segoe UI Variable font", L"Forces browser default sans-serif font to Segoe UI Variable (VF) instead of system-ui.", L"\uE8D2"}));
+    pageRows.push_back(BuildRow({L"notoEmoji", L"Noto emoji font", L"Draw emoji in Dia's interface with Noto instead of Segoe UI Emoji. Install Noto Color Emoji (or Noto Emoji) first; only elements that show an emoji are changed.", L"\uE8D2"}));
+    pageRows.push_back(BuildRow({L"notoEmojiFont", L"Emoji font family", L"Which Noto family to stack in front of Dia's fonts: Noto Color Emoji for colour, Noto Emoji for monochrome outlines.", L"\uE790",
+        {{L"notoColor", L"Noto Color Emoji"}, {L"notoMono", L"Noto Emoji"}}}));
     stack.Children().Append(BuildSection(L"Page & Search", pageRows));
 
     // 7. Actions

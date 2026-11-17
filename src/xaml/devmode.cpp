@@ -65,6 +65,10 @@ constexpr wchar_t kDevModeText[] = L"Developer Mode";
 
 constexpr int kDevToolsPort = 9222;
 
+// How long the developer UI stays off after the selected tab changed, while
+// the page tracker and the address bar still describe the previous tab.
+constexpr unsigned long long kTabSwitchGraceMs = 600;
+
 constexpr uint32_t kMarkYellow = 0xFFD700;
 constexpr uint32_t kMarkBlack = 0x000000;
 
@@ -107,6 +111,9 @@ bool SameWindow(InstanceHandle a, InstanceHandle b) {
 
 std::atomic<bool> g_workerRunning{false};
 std::atomic<bool> g_stopWorker{false};
+// Set when the selected tab changed: the worker wakes up early instead of
+// waiting for the end of its poll interval.
+std::atomic<bool> g_wakeWorker{false};
 
 struct Page {
     std::wstring url;
@@ -118,6 +125,11 @@ struct Page {
 };
 
 Page g_page;
+// Dia's tab row switches instantly while the page tracker only learns about the
+// new tab on its next pass. Until this time the tracker's origin (and the
+// address bar, which lags the same way) still describe the previous tab, so the
+// developer UI must not trust either of them.
+std::atomic<ULONGLONG> g_pageStaleUntil{0};
 std::wstring g_iniPath;
 
 // Gradient presets for Portrait Card capture
@@ -451,6 +463,7 @@ std::wstring PageOrigin() {
 }
 
 bool IsNewTabPage() {
+    if (IsDiaNewTab()) return true;
     std::wstring title = GetSelectedTabTitle();
     if (!title.empty() && title != L"New Tab" && title != L"New tab") {
         return false;
@@ -498,7 +511,9 @@ Page CurrentPage() {
         page.title = L"New Tab";
         return page;
     }
-    if (page.origin.empty()) {
+    if (page.origin.empty() && GetTickCount64() >= g_pageStaleUntil.load()) {
+        // Only trust the address bar once it has caught up with the tab switch:
+        // right after switching it still shows the tab the user just left.
         std::wstring addr = NormalizeUrl(GetAddressBarUrl());
         if (!addr.empty() && addr.find(L"newtab") == std::wstring::npos) {
             page.url = addr;
@@ -511,6 +526,10 @@ Page CurrentPage() {
 
 bool ActiveTabInDevMode() {
     if (IsNewTabPage()) return false;
+    // The tab row changed but the page tracker has not described the new tab
+    // yet: report "not in developer mode" instead of applying the previous
+    // tab's developer mark and toolbar to this one for a moment.
+    if (GetTickCount64() < g_pageStaleUntil.load()) return false;
     return TabInDevMode(CurrentPage());
 }
 
@@ -2732,14 +2751,290 @@ std::wstring CustomToolSvgPath(Tool tool) {
     return L"";
 }
 
+bool BrushLooksLight(const muxm::Brush& brush) {
+    std::vector<winrt::Windows::UI::Color> colors;
+    if (auto sb = brush.try_as<muxm::SolidColorBrush>()) {
+        colors.push_back(sb.Color());
+    } else if (auto gb = brush.try_as<muxm::GradientBrush>()) {
+        for (auto const& stop : gb.GradientStops()) colors.push_back(stop.Color());
+    }
+    double total = 0;
+    int count = 0;
+    for (auto c : colors) {
+        if (c.A < 0x40) continue;
+        total += 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+        ++count;
+    }
+    return count > 0 && total / count > 160.0;
+}
+
+// Reads the toolbar's real colours from the screen. The window material and
+// Mica sit behind the XAML tree, so neither Dia's brushes nor the app theme know
+// what the toolbar actually looks like once they are translucent.
+static bool SampleToolbarLuminance(HWND hwnd, double& luminance) {
+    if (!hwnd || !IsWindow(hwnd) || IsIconic(hwnd)) return false;
+    if (GetForegroundWindow() != hwnd) return false;
+
+    RECT rc{};
+    if (!GetClientRect(hwnd, &rc)) return false;
+    POINT origin{0, 0};
+    if (!ClientToScreen(hwnd, &origin)) return false;
+    int width = rc.right - rc.left;
+    if (width < 300) return false;
+
+    UINT dpi = GetDpiForWindow(hwnd);
+    if (!dpi) dpi = 96;
+    int bandTop = MulDiv(6, dpi, 96);
+    int bandHeight = MulDiv(38, dpi, 96);
+    int bandLeft = width * 30 / 100;
+    int bandWidth = width * 60 / 100;
+    if (bandWidth < 100 || bandHeight < 4) return false;
+
+    HDC screen = GetDC(nullptr);
+    if (!screen) return false;
+    HDC mem = CreateCompatibleDC(screen);
+    if (!mem) {
+        ReleaseDC(nullptr, screen);
+        return false;
+    }
+
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth = bandWidth;
+    info.bmiHeader.biHeight = -bandHeight;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HBITMAP bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bitmap || !bits) {
+        if (bitmap) DeleteObject(bitmap);
+        DeleteDC(mem);
+        ReleaseDC(nullptr, screen);
+        return false;
+    }
+
+    HGDIOBJ old = SelectObject(mem, bitmap);
+    BOOL copied = BitBlt(mem, 0, 0, bandWidth, bandHeight, screen,
+                         origin.x + bandLeft, origin.y + bandTop, SRCCOPY | CAPTUREBLT);
+    double total = 0;
+    int count = 0;
+    if (copied) {
+        auto* pixels = static_cast<uint32_t*>(bits);
+        for (int y = 0; y < bandHeight; y += 4) {
+            for (int x = 0; x < bandWidth; x += 8) {
+                uint32_t p = pixels[y * bandWidth + x];
+                int b = static_cast<int>(p & 0xFF);
+                int g = static_cast<int>((p >> 8) & 0xFF);
+                int r = static_cast<int>((p >> 16) & 0xFF);
+                total += 0.299 * r + 0.587 * g + 0.114 * b;
+                ++count;
+            }
+        }
+    }
+
+    SelectObject(mem, old);
+    DeleteObject(bitmap);
+    DeleteDC(mem);
+    ReleaseDC(nullptr, screen);
+
+    if (!copied || count == 0) return false;
+    luminance = total / count;
+    return true;
+}
+
 bool IsToolbarLight() {
+    static thread_local ULONGLONG s_checkedAt = 0;
+    static thread_local bool s_light = false;
+    ULONGLONG now = GetTickCount64();
+    if (s_checkedAt && now - s_checkedAt < 300) return s_light;
+
+    // What is really painted there (including Mica and our tint) beats every
+    // guess made from the XAML brushes or the Windows theme.
+    double screenLuminance = 0;
+    if (SampleToolbarLuminance(GetDiaMainWindow(), screenLuminance)) {
+        s_light = screenLuminance > 150.0;
+        s_checkedAt = now;
+        return s_light;
+    }
+
+    auto onScreen = [](const mux::FrameworkElement& fe) {
+        try {
+            if (fe.ActualWidth() < 1) return false;
+            for (mux::DependencyObject d = fe; d; d = muxm::VisualTreeHelper::GetParent(d)) {
+                if (auto u = d.try_as<mux::UIElement>(); u && u.Visibility() != mux::Visibility::Visible)
+                    return false;
+            }
+            return true;
+        } catch (...) {
+            return false;
+        }
+    };
+
+    int lightVotes = 0, darkVotes = 0;
+    auto vote = [&](const winrt::Windows::UI::Color& c) {
+        if (c.A < 0x40) return;
+        double luminance = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+        if (luminance > 160.0) ++lightVotes;
+        else if (luminance < 96.0) ++darkVotes;
+    };
+
+    auto localColor = [](const mux::DependencyObject& d, const mux::DependencyProperty& dp,
+                         winrt::Windows::UI::Color& out) -> bool {
+        try {
+            auto value = d.ReadLocalValue(dp);
+            if (auto sb = value.try_as<muxm::SolidColorBrush>()) {
+                out = sb.Color();
+                return true;
+            }
+        } catch (...) {}
+        return false;
+    };
+
+    // Dia colours the glyph inside each toolbar button, not the button itself:
+    // only locally set colours are meaningful (inherited ones carry the app theme).
+    auto readIconColors = [&](const mux::FrameworkElement& root) {
+        std::vector<mux::DependencyObject> stack;
+        stack.push_back(root.as<mux::DependencyObject>());
+        int guard = 0;
+        while (!stack.empty() && guard++ < 60) {
+            auto cur = stack.back();
+            stack.pop_back();
+            winrt::Windows::UI::Color c{};
+            if (auto fi = cur.try_as<muxc::FontIcon>()) {
+                if (localColor(fi, muxc::IconElement::ForegroundProperty(), c)) vote(c);
+            } else if (auto tb = cur.try_as<muxc::TextBlock>()) {
+                if (localColor(tb, muxc::TextBlock::ForegroundProperty(), c)) vote(c);
+            } else if (auto shape = cur.try_as<muxsh::Shape>()) {
+                if (localColor(shape, muxsh::Shape::FillProperty(), c)) vote(c);
+                if (localColor(shape, muxsh::Shape::StrokeProperty(), c)) vote(c);
+            }
+            int count = muxm::VisualTreeHelper::GetChildrenCount(cur);
+            for (int i = 0; i < count && stack.size() < 200; ++i)
+                stack.push_back(muxm::VisualTreeHelper::GetChild(cur, i));
+        }
+    };
+
+    for (const wchar_t* name : {L"BackButton", L"ForwardButton", L"ReloadButton", L"SidebarToggleButton"}) {
+        for (auto h : Engine_FindNodes(name)) {
+            if (g_markedRowHandle && !SameWindow(h, g_markedRowHandle)) continue;
+            IInspectable* raw = Engine_Object(h);
+            if (!raw) continue;
+            Inspectable obj{nullptr};
+            winrt::copy_from_abi(obj, raw);
+            raw->Release();
+            try {
+                auto fe = obj.try_as<mux::FrameworkElement>();
+                if (!fe || !onScreen(fe)) continue;
+                int before = lightVotes + darkVotes;
+                readIconColors(fe);
+                if (lightVotes + darkVotes == before) {
+                    winrt::Windows::UI::Color c{};
+                    if (auto control = obj.try_as<muxc::Control>()) {
+                        if (localColor(control, muxc::Control::ForegroundProperty(), c)) vote(c);
+                    }
+                }
+            } catch (...) {}
+        }
+    }
+
+    if (lightVotes != darkVotes) {
+        s_light = lightVotes > darkVotes;
+        s_checkedAt = now;
+        return s_light;
+    }
+
+    // The toolbar's own paint: the widest opaque element in the toolbar band.
+    // On sites like GitHub the page theme makes this row dark even though the
+    // app theme (and therefore the registry value) says light.
+    {
+        double bestArea = 0, bestLum = -1;
+        Engine_ForEachNode([&](const NodeRef& n) {
+            if (g_markedRowHandle && !SameWindow(n.handle, g_markedRowHandle)) return;
+            IInspectable* raw = Engine_Object(n.handle);
+            if (!raw) return;
+            Inspectable obj{nullptr};
+            winrt::copy_from_abi(obj, raw);
+            raw->Release();
+            auto fe = obj.try_as<mux::FrameworkElement>();
+            if (!fe || fe.Visibility() != mux::Visibility::Visible) return;
+            double w = fe.ActualWidth(), ht = fe.ActualHeight();
+            if (w < 200 || ht < 8 || ht > 80) return;
+            winrt::Windows::Foundation::Point at{};
+            try { at = fe.TransformToVisual(nullptr).TransformPoint({0, 0}); } catch (...) { return; }
+            if (at.Y < -12 || at.Y > 60) return;
+            muxm::Brush brush{nullptr};
+            try {
+                if (auto b = obj.try_as<muxc::Border>()) brush = b.Background();
+                else if (auto g = obj.try_as<muxc::Grid>()) brush = g.Background();
+                else if (auto p = obj.try_as<muxc::Panel>()) brush = p.Background();
+                else if (auto cc = obj.try_as<muxc::ContentControl>()) brush = cc.Background();
+                else if (auto cp = obj.try_as<muxc::ContentPresenter>()) brush = cp.Background();
+                else if (auto sh = obj.try_as<muxsh::Shape>()) brush = sh.Fill();
+            } catch (...) {}
+            if (!brush) return;
+            double lum = -1, total = 0;
+            int count = 0;
+            if (auto sb = brush.try_as<muxm::SolidColorBrush>()) {
+                auto c = sb.Color();
+                if (c.A >= 0x80) lum = 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+            } else if (auto gb = brush.try_as<muxm::GradientBrush>()) {
+                for (auto const& st : gb.GradientStops()) {
+                    auto c = st.Color();
+                    if (c.A < 0x80) continue;
+                    total += 0.299 * c.R + 0.587 * c.G + 0.114 * c.B;
+                    ++count;
+                }
+                if (count) lum = total / count;
+            }
+            if (lum < 0) return;
+            double area = w * ht;
+            if (area > bestArea) {
+                bestArea = area;
+                bestLum = lum;
+            }
+        });
+        if (bestLum >= 0) {
+            s_light = bestLum > 160.0;
+            s_checkedAt = now;
+            return s_light;
+        }
+    }
+
+    // No icon colour available: fall back to the toolbar's own background.
+    for (const wchar_t* name : {L"NavigationBarContent", L"AssistantBarHost", L"AssistantBar", L"ContentGroup"}) {
+        for (auto h : Engine_FindNodes(name)) {
+            if (g_markedRowHandle && !SameWindow(h, g_markedRowHandle)) continue;
+            IInspectable* raw = Engine_Object(h);
+            if (!raw) continue;
+            Inspectable obj{nullptr};
+            winrt::copy_from_abi(obj, raw);
+            raw->Release();
+            try {
+                auto fe = obj.try_as<mux::FrameworkElement>();
+                if (!fe || !onScreen(fe)) continue;
+                if (auto p = obj.try_as<muxc::Panel>()) {
+                    if (BrushLooksLight(p.Background())) { s_light = true; s_checkedAt = now; return s_light; }
+                } else if (auto cc = obj.try_as<muxc::ContentControl>()) {
+                    if (BrushLooksLight(cc.Background())) { s_light = true; s_checkedAt = now; return s_light; }
+                } else if (auto b = obj.try_as<muxc::Border>()) {
+                    if (BrushLooksLight(b.Background())) { s_light = true; s_checkedAt = now; return s_light; }
+                }
+            } catch (...) {}
+        }
+    }
+
     DWORD v = 0, size = sizeof(v);
     if (RegGetValueW(HKEY_CURRENT_USER,
                      L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
                      L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS) {
-        return v != 0;
+        s_light = v != 0;
+    } else {
+        s_light = false;
     }
-    return false;
+    s_checkedAt = now;
+    return s_light;
 }
 
 std::wstring GetThemedSvgPath(Tool tool, bool isLight) {
@@ -2897,6 +3192,50 @@ mux::FrameworkElement BuildToolbar(double barWidth) {
     return strip;
 }
 
+// Recolour the existing strip in place. Dia changes the toolbar palette when the
+// page or hover state changes; rebuilding the strip there is what made the icons
+// flicker, so only the colours and themed icons are swapped.
+void ApplyToolbarLight(const mux::FrameworkElement& strip, bool isLight) {
+    auto panel = strip.try_as<muxc::Panel>();
+    if (!panel) return;
+
+    muxm::SolidColorBrush fg;
+    fg.Color(isLight ? ColorFrom(0x1C1C1E) : winrt::Windows::UI::Colors::White());
+    const std::wstring prefix = L"DiaTweaksDevModeTool";
+
+    for (uint32_t i = 0; i < panel.Children().Size(); ++i) {
+        auto child = panel.Children().GetAt(i);
+        if (auto button = child.try_as<muxc::Button>()) {
+            try { button.Foreground(fg); } catch (...) {}
+            std::wstring name(button.Name());
+            if (name.rfind(prefix, 0) == 0) {
+                int index = _wtoi(name.c_str() + prefix.size());
+                if (index >= 0 && index < kToolCount) {
+                    try {
+                        if (auto img = button.Content().try_as<muxc::Image>()) {
+                            std::wstring path = GetThemedSvgPath(static_cast<Tool>(index), isLight);
+                            if (!path.empty()) {
+                                muxm_imaging::SvgImageSource svg(
+                                    winrt::Windows::Foundation::Uri(std::wstring(L"file:///") + path));
+                                svg.RasterizePixelWidth(36);
+                                svg.RasterizePixelHeight(36);
+                                img.Source(svg);
+                            }
+                        }
+                    } catch (...) {}
+                }
+            }
+        } else if (auto rect = child.try_as<muxsh::Rectangle>()) {
+            try {
+                muxm::SolidColorBrush div;
+                div.Color(isLight ? winrt::Windows::UI::ColorHelper::FromArgb(40, 0, 0, 0)
+                                  : winrt::Windows::UI::ColorHelper::FromArgb(40, 255, 255, 255));
+                rect.Fill(div);
+            } catch (...) {}
+        }
+    }
+}
+
 muxm::Brush BuildStripes(double width, double height) {
     const double band = 16.0;
     const double reach = width + height;
@@ -2944,6 +3283,16 @@ winrt::weak_ref<mux::FrameworkElement> g_extensionsRepeater;
 bool g_extensionsWereVisible = false;
 winrt::Windows::Foundation::IInspectable g_toolbarBarBackground{nullptr};
 std::vector<winrt::weak_ref<mux::FrameworkElement>> g_hiddenToolbarElements;
+// Keep the strip and its stripe brush alive across Dia's hover rebuilds, so a
+// hover never recreates (and visibly flickers) the developer toolbar.
+mux::FrameworkElement g_toolbarKeep{nullptr};
+muxm::Brush g_toolbarStripes{nullptr};
+winrt::weak_ref<muxc::Border> g_toolbarBar;
+bool g_toolbarLight = false;
+bool g_toolbarLightKnown = false;
+InstanceHandle g_toolbarHostHandle = 0;
+double g_stripeW = 0;
+double g_stripeH = 0;
 
 bool IsEllipsisElement(mux::FrameworkElement fe) {
     if (!fe) return false;
@@ -2981,6 +3330,49 @@ bool IsEllipsisElement(mux::FrameworkElement fe) {
     return false;
 }
 
+// Dia shows the pinned-extension buttons again on hover. Keep only our strip
+// visible while Developer Mode owns that row, without rebuilding anything.
+void EnforceToolbarOnly(const muxc::Panel& panel, const mux::FrameworkElement& strip) {
+    if (!panel || !strip) return;
+    for (uint32_t i = 0; i < panel.Children().Size(); ++i) {
+        auto child = panel.Children().GetAt(i).try_as<mux::FrameworkElement>();
+        if (!child || child == strip) continue;
+        if (child.Name() == kToolbarName) {
+            try { child.Visibility(mux::Visibility::Collapsed); } catch (...) {}
+            continue;
+        }
+        try {
+            if (child.Visibility() == mux::Visibility::Visible) {
+                child.Visibility(mux::Visibility::Collapsed);
+                bool known = false;
+                for (auto& weak : g_hiddenToolbarElements)
+                    if (weak.get() == child) { known = true; break; }
+                if (!known) g_hiddenToolbarElements.push_back(winrt::make_weak(child));
+            }
+        } catch (...) {}
+    }
+}
+
+void EnsureStripInPanel(const muxc::Panel& panel, const mux::FrameworkElement& strip) {
+    if (!panel || !strip) return;
+    bool present = false;
+    for (uint32_t i = 0; i < panel.Children().Size(); ++i)
+        if (panel.Children().GetAt(i) == strip) { present = true; break; }
+    if (!present) {
+        try {
+            if (auto old = muxm::VisualTreeHelper::GetParent(strip).try_as<muxc::Panel>()) {
+                for (int i = static_cast<int>(old.Children().Size()) - 1; i >= 0; --i)
+                    if (old.Children().GetAt(i) == strip) old.Children().RemoveAt(i);
+            }
+        } catch (...) {}
+        try { panel.Children().InsertAt(0, strip); } catch (...) {}
+    }
+    try {
+        strip.Visibility(mux::Visibility::Visible);
+        strip.Opacity(1.0);
+    } catch (...) {}
+}
+
 void ShowToolbar() {
     if (IsNewTabPage()) return;
     bool placed = false;
@@ -3000,83 +3392,83 @@ void ShowToolbar() {
         }
     }
 
-    for (auto handle : Engine_FindNodes(L"PinnedExtensionsHost")) {
-        if (!SameWindow(handle, g_markedRowHandle)) continue;
-        IInspectable* raw = Engine_Object(handle);
-        if (!raw) continue;
-        Inspectable object{nullptr};
-        winrt::copy_from_abi(object, raw);
-        raw->Release();
+    bool isLight = IsToolbarLight();
+    bool lightChanged = !g_toolbarLightKnown || g_toolbarLight != isLight;
+    g_toolbarLight = isLight;
+    g_toolbarLightKnown = true;
+    if (lightChanged) Log("developer mode: toolbar palette %s", isLight ? "light" : "dark");
 
-        auto host = object.try_as<muxc::ContentControl>();
-        if (!host) continue;
+    muxc::ContentControl targetHost{nullptr};
+    muxc::Panel targetPanel{nullptr};
+    Inspectable originalContent{nullptr};
+    InstanceHandle targetHandle = 0;
 
-        try { host.Visibility(mux::Visibility::Visible); } catch (...) {}
-
-        Inspectable original{nullptr};
-        try {
-            original = host.Content();
-        } catch (...) {}
-
-        auto panel = original.try_as<muxc::Panel>();
-        if (!panel) {
-            muxc::StackPanel sp;
-            sp.Orientation(muxc::Orientation::Horizontal);
-            host.Content(sp);
-            panel = sp;
-        }
-
-        static bool s_lastWasLight = false;
-        bool isLight = IsToolbarLight();
-
-        bool alreadyHasToolbar = false;
-        for (uint32_t i = 0; i < panel.Children().Size(); ++i) {
-            if (auto child = panel.Children().GetAt(i).try_as<mux::FrameworkElement>()) {
-                if (child.Name() == kToolbarName) {
-                    alreadyHasToolbar = true;
-                    break;
+    // Reuse the strip across Dia's hover rebuilds: the row's content object may
+    // be replaced, but the strip itself stays alive and is simply reinserted.
+    if (g_toolbarHostHandle && SameWindow(g_toolbarHostHandle, g_markedRowHandle)) {
+        if (auto host = g_toolbarHost.get()) {
+            try {
+                if (auto p = host.Content().try_as<muxc::Panel>()) {
+                    targetHost = host;
+                    targetPanel = p;
+                    originalContent = host.Content();
+                    targetHandle = g_toolbarHostHandle;
                 }
+            } catch (...) {}
+        }
+    }
+
+    if (!targetPanel) {
+        for (auto handle : Engine_FindNodes(L"PinnedExtensionsHost")) {
+            if (!SameWindow(handle, g_markedRowHandle)) continue;
+            IInspectable* raw = Engine_Object(handle);
+            if (!raw) continue;
+            Inspectable object{nullptr};
+            winrt::copy_from_abi(object, raw);
+            raw->Release();
+
+            auto host = object.try_as<muxc::ContentControl>();
+            if (!host) continue;
+
+            try { host.Visibility(mux::Visibility::Visible); } catch (...) {}
+
+            Inspectable original{nullptr};
+            try {
+                original = host.Content();
+            } catch (...) {}
+
+            auto panel = original.try_as<muxc::Panel>();
+            if (!panel) {
+                muxc::StackPanel sp;
+                sp.Orientation(muxc::Orientation::Horizontal);
+                host.Content(sp);
+                panel = sp;
             }
-        }
 
-        // If toolbar exists, nothing to do (never flicker or rebuild on hover)
-        if (alreadyHasToolbar) {
-            return;
+            targetHost = host;
+            targetPanel = panel;
+            originalContent = original;
+            targetHandle = handle;
+            break;
         }
+    }
 
-        for (int i = static_cast<int>(panel.Children().Size()) - 1; i >= 0; --i) {
-            if (auto child = panel.Children().GetAt(i).try_as<mux::FrameworkElement>()) {
-                if (child.Name() == kToolbarName) {
-                    panel.Children().RemoveAt(i);
-                }
-            }
-        }
+    if (targetPanel) {
+        auto strip = g_toolbarKeep;
+        bool builtNew = !strip;
+        if (builtNew) strip = BuildToolbar(0);
+        if (!strip) return;
 
-        auto strip = BuildToolbar(0);
+        EnsureStripInPanel(targetPanel, strip);
+        if (builtNew || lightChanged) ApplyToolbarLight(strip, isLight);
+        EnforceToolbarOnly(targetPanel, strip);
+
+        // Hide any sibling ellipsis/more button in the parent panel.
         try {
-            panel.Children().InsertAt(0, strip.as<mux::FrameworkElement>());
-        } catch (...) {
-            continue;
-        }
-
-        // Hide any other elements inside panel (e.g. pinned extensions or ellipsis button)
-        for (uint32_t i = 0; i < panel.Children().Size(); ++i) {
-            if (auto child = panel.Children().GetAt(i).try_as<mux::FrameworkElement>()) {
-                if (child.Name() != kToolbarName) {
-                    if (child.Visibility() == mux::Visibility::Visible) {
-                        child.Visibility(mux::Visibility::Collapsed);
-                        g_hiddenToolbarElements.push_back(winrt::make_weak(child));
-                    }
-                }
-            }
-        }
-
-        // Hide any sibling ellipsis/more button in the parent panel
-        try {
-            if (auto parentPanel = host.Parent().try_as<muxc::Panel>()) {
+            if (auto parentPanel = targetHost.Parent().try_as<muxc::Panel>()) {
                 for (uint32_t i = 0; i < parentPanel.Children().Size(); ++i) {
                     if (auto sib = parentPanel.Children().GetAt(i).try_as<mux::FrameworkElement>()) {
-                        if (sib == host) continue;
+                        if (sib == targetHost) continue;
                         if (IsEllipsisElement(sib) && sib.Visibility() == mux::Visibility::Visible) {
                             sib.Visibility(mux::Visibility::Collapsed);
                             g_hiddenToolbarElements.push_back(winrt::make_weak(sib));
@@ -3086,7 +3478,7 @@ void ShowToolbar() {
             }
         } catch (...) {}
 
-        // Also check any known More/Ellipsis nodes
+        // Also check any known More/Ellipsis nodes.
         for (const wchar_t* name : {L"MoreExtensionsButton", L"ExtensionsMenuButton", L"BrowserActionsMenuButton", L"MoreButton", L"MoreActionsButton"}) {
             for (auto h : Engine_FindNodes(name)) {
                 if (!SameWindow(h, g_markedRowHandle)) continue;
@@ -3104,12 +3496,13 @@ void ShowToolbar() {
             }
         }
 
-        g_toolbarHost = winrt::make_weak(host);
-        g_toolbarHostContent = original;
-        g_toolbarPanel = panel;
-        g_toolbar = winrt::make_weak(strip.as<mux::FrameworkElement>());
-        placed = true;
-        break;
+        g_toolbarKeep = strip;
+        g_toolbarHost = winrt::make_weak(targetHost);
+        g_toolbarHostContent = originalContent;
+        g_toolbarHostHandle = targetHandle;
+        g_toolbarPanel = targetPanel;
+        g_toolbar = winrt::make_weak(strip);
+        placed = builtNew;
     }
 
     for (auto handle : Engine_FindNodes(L"PinnedExtensionsRepeater")) {
@@ -3155,7 +3548,14 @@ void ShowToolbar() {
         if (!g_toolbarBarBackground) {
             g_toolbarBarBackground = border.Background();
         }
-        border.Background(BuildStripes(width, height));
+        if (!g_toolbarStripes || std::abs(g_stripeW - width) > 1 || std::abs(g_stripeH - height) > 1) {
+            g_toolbarStripes = BuildStripes(width, height);
+            g_stripeW = width;
+            g_stripeH = height;
+        }
+        // Dia repaints the toolbar during hover; keep the stripes on top every tick.
+        if (border.Background() != g_toolbarStripes) border.Background(g_toolbarStripes);
+        g_toolbarBar = winrt::make_weak(border);
         break;
     }
 
@@ -3163,7 +3563,8 @@ void ShowToolbar() {
 }
 
 void HideToolbar() {
-    if (!g_toolbar.get() && !g_toolbarPanel.get() && g_hiddenToolbarElements.empty() && !g_toolbarHost.get()) return;
+    if (!g_toolbar.get() && !g_toolbarKeep && !g_toolbarPanel.get() && !g_toolbarBar.get() &&
+        g_hiddenToolbarElements.empty() && !g_toolbarHost.get()) return;
     if (auto panel = g_toolbarPanel.get()) {
         for (int i = static_cast<int>(panel.Children().Size()) - 1; i >= 0; --i) {
             if (auto child = panel.Children().GetAt(i).try_as<mux::FrameworkElement>()) {
@@ -3199,7 +3600,10 @@ void HideToolbar() {
 
     g_toolbarHost = nullptr;
     g_toolbarHostContent = nullptr;
+    g_toolbarHostHandle = 0;
     g_toolbar = nullptr;
+    g_toolbarKeep = nullptr;
+    g_toolbarLightKnown = false;
 
     if (IsNewTabPage()) {
         g_hiddenToolbarElements.clear();
@@ -3220,22 +3624,34 @@ void HideToolbar() {
         g_hiddenToolbarElements.clear();
     }
 
-    for (auto handle : Engine_FindNodes(L"AssistantBar")) {
-        IInspectable* raw = Engine_Object(handle);
-        if (!raw) continue;
-        Inspectable object{nullptr};
-        winrt::copy_from_abi(object, raw);
-        raw->Release();
-
-        auto border = object.try_as<muxc::Border>();
-        if (!border) continue;
-
+    if (auto bar = g_toolbarBar.get()) {
         if (g_toolbarBarBackground) {
             try {
-                border.Background(g_toolbarBarBackground.as<muxm::Brush>());
+                bar.Background(g_toolbarBarBackground.as<muxm::Brush>());
             } catch (...) {}
         }
+    } else {
+        for (auto handle : Engine_FindNodes(L"AssistantBar")) {
+            IInspectable* raw = Engine_Object(handle);
+            if (!raw) continue;
+            Inspectable object{nullptr};
+            winrt::copy_from_abi(object, raw);
+            raw->Release();
+
+            auto border = object.try_as<muxc::Border>();
+            if (!border) continue;
+
+            if (g_toolbarBarBackground) {
+                try {
+                    border.Background(g_toolbarBarBackground.as<muxm::Brush>());
+                } catch (...) {}
+            }
+        }
     }
+    g_toolbarBar = nullptr;
+    g_toolbarStripes = nullptr;
+    g_stripeW = 0;
+    g_stripeH = 0;
     g_toolbarBarBackground = nullptr;
 }
 
@@ -3264,6 +3680,7 @@ DWORD WINAPI WorkerThread(LPVOID) {
         }
 
         for (int i = 0; i < 15 && !g_stopWorker; ++i) {
+            if (g_wakeWorker.exchange(false)) break;
             Sleep(100);
         }
     }
@@ -3343,8 +3760,48 @@ void Tick() {
     }
 
     std::wstring tabTitle = GetSelectedTabTitle();
+
+    // The tab row switches immediately; the page tracker catches up on its next
+    // pass. When the selection moved, forget the previous tab's page and hold
+    // the developer UI back for a moment so the mark and toolbar cannot appear
+    // on a tab that is not in developer mode.
+    //
+    // Only the letters of the title count: pages that rewrite their title all
+    // the time (unread counts, timers) must not be mistaken for a tab switch.
+    auto titleKey = [](const std::wstring& title) {
+        std::wstring key;
+        for (wchar_t c : title) {
+            if (iswalpha(static_cast<wint_t>(c)))
+                key.push_back(static_cast<wchar_t>(towlower(c)));
+        }
+        if (key.size() > 24) key.resize(24);
+        return key;
+    };
+    static std::wstring s_lastTabTitleKey;
+    std::wstring tabKey = titleKey(tabTitle);
+    if (!tabKey.empty() && !s_lastTabTitleKey.empty() && tabKey != s_lastTabTitleKey) {
+        {
+            std::lock_guard<std::mutex> lock(g_lock);
+            g_page.url.clear();
+            g_page.origin.clear();
+            g_page.socket.clear();
+            g_page.targetId.clear();
+            g_page.devTools = false;
+            // Matches the new tab, so the worker can find it right away.
+            g_page.title = tabTitle;
+        }
+        g_pageStaleUntil.store(GetTickCount64() + kTabSwitchGraceMs);
+        g_wakeWorker.store(true);
+        ClearMark();
+        HideToolbar();
+        Log("developer mode: tab switched to %ls, holding the developer UI back until the page tracker catches up",
+            tabTitle.c_str());
+    }
+    if (!tabKey.empty()) s_lastTabTitleKey = tabKey;
+
     std::wstring addr = NormalizeUrl(GetAddressBarUrl());
-    if (!addr.empty() && addr.find(L"newtab") == std::wstring::npos) {
+    if (GetTickCount64() >= g_pageStaleUntil.load() &&
+        !addr.empty() && addr.find(L"newtab") == std::wstring::npos) {
         std::wstring origin = OriginOf(addr);
         if (!origin.empty()) {
             std::lock_guard<std::mutex> lock(g_lock);
@@ -3363,12 +3820,4 @@ void Tick() {
     UpdateToolbar();
 }
 
-bool IsDiaNewTabImpl() {
-    return IsNewTabPage();
-}
-
 }  // namespace DevMode
-
-bool IsDiaNewTab() {
-    return DevMode::IsDiaNewTabImpl();
-}

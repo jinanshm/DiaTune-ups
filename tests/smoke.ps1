@@ -91,7 +91,7 @@ foreach ($key in @('edgeToEdge', 'squareSidebarCorners', 'keepWindowsActive',
         'hidePersonalizeButton', 'hideUpgradeBanner', 'hideTabSearchButton',
         'profileEmoji', 'sidebarGrain', 'pinnedExtensions', 'hideLoadingAnimation',
         'hidePinnedTabBorder', 'hideTabHoverCard', 'translucentSidebar', 'windowMaterial',
-        'dontPopUpDownloads', 'cleanSearchBox', 'hideLinkAddress')) {
+        'dontPopUpDownloads', 'cleanSearchBox', 'hideLinkAddress', 'notoEmoji')) {
     Assert-True ($supported -contains $key) "$key is supported"
 }
 

@@ -2,6 +2,20 @@
 
 All notable changes to **DiaTweaks (Dia Tune-ups) for Windows** will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Material Translucency Slider**: New slider under *Window → Window material* in the Tune-ups panel. It sets how far the space colour fades while the sidebar is open (0% keeps the full colour, 100% leaves only the Mica/Acrylic backdrop). Saved as `materialTransparency` in `state.json` and `xaml.cfg`.
+
+### Changed
+- With *Translucent sidebar* on and the sidebar open, the window now uses an Acrylic backdrop even when *Mica* is selected, so the desktop shows through the way the Settings window does.
+- The sidebar space colour no longer keeps a fixed tint while the sidebar is open; the new slider controls it instead.
+
+### Fixed
+- The developer-mode striped tab mark and toolbar no longer jump to a tab the user just switched to. The mark waits until the page tracker has described the new tab instead of reusing the previous tab's origin for a second.
+- Developer-mode toolbar icons now choose light or dark from the real on-screen toolbar colour (including Mica/Acrylic and custom site toolbars) instead of the inherited app theme, and hover no longer rebuilds or flickers the strip.
+- Toolbar palette changes now recolour the existing developer toolbar in place instead of rebuilding it.
+
 ## [1.1.0] - 2026-11-15
 
 ### Added

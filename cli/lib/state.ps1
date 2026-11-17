@@ -50,7 +50,8 @@ $script:XamlKeys = @(
     'edgeToEdge',
     'squareSidebarCorners',
     'normalLaunch',
-    'segoeUiVariable'
+    'segoeUiVariable',
+    'notoEmoji'
 )
 $script:XamlInjected = @{}
 $script:Manifest = $null
@@ -178,6 +179,7 @@ function Get-DefaultState {
     $state['sidebarGrainAmount'] = 50
     $state['sidebarGrainSoftness'] = 0
     $state['newTabPaintingTint'] = 67
+    $state['materialTransparency'] = 100
     return $state
 }
 
@@ -217,6 +219,9 @@ function Read-State {
     if ($null -ne $data.tweaks.newTabPaintingTint) {
         $state['newTabPaintingTint'] = [int]$data.tweaks.newTabPaintingTint
     }
+    if ($null -ne $data.tweaks.materialTransparency) {
+        $state['materialTransparency'] = [int]$data.tweaks.materialTransparency
+    }
     if ($data.tweaks.hideToolbarMode) {
         $state['hideToolbarMode'] = $data.tweaks.hideToolbarMode
     }
@@ -250,6 +255,9 @@ function Write-State {
     }
     if ($State.ContainsKey('newTabPaintingTint')) {
         $tweaks['newTabPaintingTint'] = [int]$State['newTabPaintingTint']
+    }
+    if ($State.ContainsKey('materialTransparency')) {
+        $tweaks['materialTransparency'] = [int]$State['materialTransparency']
     }
     if ($State.ContainsKey('hideToolbarMode')) {
         $tweaks['hideToolbarMode'] = $State['hideToolbarMode']
@@ -484,8 +492,14 @@ function Write-XamlConfig {
     $profileEmojiText = if ($State['profileEmojiText']) { $State['profileEmojiText'] } else { '🦊' }
     $lines += "profileEmojiText=$profileEmojiText"
 
+    $notoFont = if ($State['notoEmojiFont']) { $State['notoEmojiFont'] } else { 'notoColor' }
+    $lines += "notoEmojiFont=$notoFont"
+
     $paintingTint = if ($null -ne $State['newTabPaintingTint']) { $State['newTabPaintingTint'] } else { 67 }
     $lines += "newTabPaintingTint=$paintingTint"
+
+    $materialTransparency = if ($null -ne $State['materialTransparency']) { [int]$State['materialTransparency'] } else { 100 }
+    $lines += "materialTransparency=$materialTransparency"
 
     $configPath = Join-Path $script:StateDir 'xaml.cfg'
     $existingEmojis = ""

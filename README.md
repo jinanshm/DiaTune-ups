@@ -36,6 +36,7 @@ You can configure every tweak directly inside Dia's native Settings window:
    - **Switch Presets**: Instant one-click presets for **Arc**, **Arc (Windows)**, **None** (original Dia), or **Custom**.
    - **Toggle any tweak**: Window geometry, toolbar visibility, toolbar icons, sidebar textures, link previews, typography, and wallpaper.
    - **Choose Materials**: Switch backdrop materials (*Mica*, *Acrylic*, *Mica Alt*) and textures (*Sand*, *Fine grain*, *Denim*, *Paper*) with instant live feedback.
+   - **Tune Material Translucency**: A **Translucency** slider under *Window material* sets how much the space colour fades out while the sidebar is open, from the full colour (0%) to just the backdrop (100%).
    - **Update Dia Tune-ups**: Check for the latest release and updates directly from the panel.
    - **View Changelog**: Expand the in-panel changelog card to inspect version release notes loaded from `changelog.json`.
    - **Support Developer**: One-click button to support continued open-source development via Buy Me a Coffee.
@@ -53,6 +54,7 @@ All changes made in the Settings tab update Dia instantly in real-time and stay 
 | `edgeToEdge` | Edge-to-edge window | Supported | Removes the window's 1px border and margins so the page meets the window edges. |
 | `squareSidebarCorners` | Square window corners | Supported | Requests Windows not to round the window corners (`DWMWCP_DONOTROUND`). Requires `edgeToEdge`. |
 | `windowMaterial` | Window material | Supported | Applies backdrop materials behind tabs and sidebar: `default`, `mica`, `acrylic`, `micaalt`, or `none`. |
+| `materialTransparency` | Window material translucency | Supported | 0–100%: how much the space colour fades out while the sidebar is open. 100% leaves only the backdrop; hidden sidebar keeps the full colour. Set from the Tune-ups slider. |
 | `keepWindowsActive` | Keep display awake | Supported | Keeps the display and system awake while Dia is running. |
 | `normalLaunch` | Patch Dia however it's opened | Supported | Keeps tweaks active whenever Dia opens from any shortcut, pinned icon, or link. |
 
@@ -76,13 +78,13 @@ All changes made in the Settings tab update Dia instantly in real-time and stay 
 | `hideTrafficLights` | Hide window controls | Supported | Hides the minimize, maximize, and close buttons in the title bar. |
 | `hideLoadingAnimation` | Hide loading animation | Supported | Hides the loading line indicator in the address bar. |
 | `pinnedExtensions` | Pinned extensions shown | Supported | Shows up to 6, 8, 10, 12 or 16 pinned extensions by the address bar instead of 4. |
-| `developerMode` | Developer Mode Toolbar | Supported | Adds Developer Mode toggle to tab/site menus with an Arc-style dev toolbar (console, network, inspector, responsive device, extensions). |
+| `developerMode` | Developer Mode Toolbar | Supported | Adds Developer Mode toggle to tab/site menus with an Arc-style dev toolbar (console, network, inspector, responsive device, extensions). The striped tab mark and toolbar only appear on tabs that are actually in developer mode, and toolbar icons pick light or dark from the real on-screen toolbar colour. |
 | `developerModeLocalhost` | Developer mode for localhost | Supported | Automatically enables developer mode for `localhost` and `127.0.0.1`. |
 
 ### 4. Sidebar & Tab Bar
 | Tweak Key | Title | Windows Status | Description |
 |---|---|---|---|
-| `translucentSidebar` | Translucent sidebar | Supported | Sets translucency on the floating sidebar surface. |
+| `translucentSidebar` | Translucent sidebar | Supported | Lets the sidebar show the window material: with it on, an open sidebar uses Acrylic and the material translucency slider instead of the solid space colour. |
 | `sidebarGrain` | Sidebar grain | Supported | Adds procedural tactile texture behind the sidebar and tabs. |
 | `sidebarGrainMaterial` | Grain texture material | Supported | Texture choice: `sand`, `grain` (Fine grain), `denim` (Denim weave), or `paper` (Paper fiber). |
 | `sidebarGrainAmount` | Sidebar grain amount | Supported | Density slider (0 to 100%) for procedural texture generation. |
@@ -103,6 +105,8 @@ All changes made in the Settings tab update Dia instantly in real-time and stay 
 | `dontPopUpDownloads` | Don't pop up downloads | Supported | Stops the downloads list from automatically opening on every download. |
 | `hideUpgradeBanner` | Hide upgrade banner | Supported | Hides the Chat usage and upgrade upsell banner. |
 | `segoeUiVariable` | Force Segoe UI Variable font | Supported | Forces browser default sans-serif font to Windows 11 Segoe UI Variable instead of system-ui. |
+| `notoEmoji` | Noto emoji font | Supported | Draws emoji in Dia's interface with Noto instead of Segoe UI Emoji, on the elements whose text carries an emoji. Requires Noto Color Emoji or Noto Emoji to be installed. |
+| `notoEmojiFont` | Emoji font family | Supported | Which Noto family is stacked: `notoColor` (Noto Color Emoji) or `notoMono` (Noto Emoji, monochrome outlines). |
 
 ### 6. macOS-Specific / Unavailable Tweaks
 The following tweaks from the original macOS DiaTweaks are not available on Windows:

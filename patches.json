@@ -346,6 +346,28 @@
       "detail": "Use Windows 11's Segoe UI Variable font for web pages and UI instead of system-ui.",
       "supported": true,
       "mechanism": "xaml"
+    },
+    {
+      "key": "notoEmoji",
+      "order": 108,
+      "title": "Noto emoji font",
+      "detail": "Draw emoji in Dia's interface with Noto instead of Segoe UI Emoji. Install Noto Color Emoji (or Noto Emoji) first; only elements that show an emoji are changed.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
+      "key": "notoEmojiFont",
+      "order": 109,
+      "title": "Emoji font family",
+      "detail": "Which Noto family to stack in front of Dia's fonts: Noto Color Emoji for colour, or Noto Emoji for monochrome outlines.",
+      "type": "choice",
+      "default": "notoColor",
+      "options": [
+        { "value": "notoColor", "label": "Noto Color Emoji" },
+        { "value": "notoMono", "label": "Noto Emoji" }
+      ],
+      "supported": true,
+      "mechanism": "xaml"
     }
   ]
 }

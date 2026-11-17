@@ -281,6 +281,9 @@ function Invoke-SetTweakValue {
     if ($patch.key -eq 'sidebarGrain') {
         $state['sidebarGrain'] = $true
         $state['sidebarGrainMaterial'] = $Value
+    } elseif ($patch.key -eq 'notoEmoji') {
+        $state['notoEmoji'] = $true
+        $state['notoEmojiFont'] = $Value
     } else {
         $state[$patch.key] = $Value
     }
