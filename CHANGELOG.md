@@ -2,6 +2,12 @@
 
 All notable changes to **DiaTweaks (Dia Tune-ups) for Windows** will be documented in this file.
 
+## [1.1.2] - 2026-11-18
+
+### Added
+- **Hide history suggestions** (`hideHistorySuggestions`): Keeps visited pages and past searches out of the address and command bar suggestions. Ported from zioder/WinDiaTweaks (which follows JaceThings/DiaTweaks on macOS). Chromium autocomplete results are filtered before Dia builds the suggestion list, so the arrow keys, Enter and inline completion all follow. Searching, Chat, search suggestions and open tabs still show; browsing history itself is untouched.
+- **Arc pinned tabs** (`arcPinnedTabs`): On hover, a pinned tab that has left its pinned page shows a minus that returns it, and one still on its page shows a close button, matching Arc. Ported from zioder/WinDiaTweaks. The button is overlaid in a popup rather than inserted into Dia's row, and presses Dia's own buttons.
+
 ## [1.1.1] - 2026-11-17
 
 ### Added

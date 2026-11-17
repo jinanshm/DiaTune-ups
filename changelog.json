@@ -1,6 +1,15 @@
 {
   "versions": [
     {
+      "version": "1.1.2",
+      "date": "2026-11-18",
+      "title": "Dia Tune-ups v1.1.2",
+      "changes": [
+        "Hide history suggestions: visited pages and past searches no longer appear in address and command bar suggestions, ported from zioder/WinDiaTweaks.",
+        "Arc pinned tabs: hovering a pinned tab now shows a minus to return it to its page or a close button when it is already there, ported from zioder/WinDiaTweaks."
+      ]
+    },
+    {
       "version": "1.1.1",
       "date": "2026-11-17",
       "title": "Dia Tune-ups v1.1.1",

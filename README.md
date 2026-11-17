@@ -1,6 +1,6 @@
 # DiaTweaks (Dia Tune-ups) for Windows
 
-[![Version 1.1.1](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/jinanshm/DiaTweaks-Win/releases)
+[![Version 1.1.2](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/jinanshm/DiaTweaks-Win/releases)
 [![Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4.svg)](https://microsoft.com/windows)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20Developer-orange.svg)](https://buymeacoffee.com/jinansh_)
 
@@ -10,8 +10,10 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ---
 
-## What's New in Version 1.1.1
+## What's New in Version 1.1.2
 
+- **Hide history suggestions**: Visited pages and past searches stay out of address and command bar suggestions, ported from zioder/WinDiaTweaks.
+- **Arc pinned tabs**: Hovering a pinned tab shows a minus to return it to its page, or a close button when it is already there.
 - **Hover-free Developer Toolbar**: The dev toolbar icons and striped tab mark now stay visible without hovering the toolbar.
 - **One-click, build-aware Updates**: A single button checks GitHub and installs the newest build, detected by git commit rather than published releases.
 - **Silent Launch & Apply**: `diatweaks.vbs` and the updater run with no CMD window.
@@ -32,7 +34,7 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ### Install from a release (recommended)
 
-1. Download `DiaTuneups-Windows-v1.1.1.zip` from the [Releases page](https://github.com/jinanshm/DiaTweaks-Win/releases).
+1. Download `DiaTuneups-Windows-v1.1.2.zip` from the [Releases page](https://github.com/jinanshm/DiaTweaks-Win/releases).
 2. Extract it to a folder of your choice, for example `C:\DiaTuneups`.
 3. Double-click `diatweaks.vbs` in that folder to apply the tweaks, or use a shortcut to `wscript.exe "C:\DiaTuneups\diatweaks.vbs" launch` to open Dia and apply them without a console window.
 4. To update later, open Dia's Settings, go to the Tune-ups tab, and click **Update Tune-ups**.

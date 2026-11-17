@@ -7100,9 +7100,9 @@ static std::vector<ChangelogVersion> LoadChangelog() {
 
     auto GetDefaultChangelog = []() -> std::vector<ChangelogVersion> {
         ChangelogVersion v;
-        v.version = L"1.1.1";
+        v.version = L"1.1.2";
         v.date = L"2026-11-15";
-        v.title = L"Dia Tune-ups v1.1.1";
+        v.title = L"Dia Tune-ups v1.1.2";
         v.changes = {
             L"In-App Tune-ups Settings: Full settings page inside Dia with live toggle switches and preset picker.",
             L"Developer Mode Toolbar: Arc-style dev toolbar with responsive inspect, console, network, and extension tools.",
@@ -7189,9 +7189,9 @@ static std::vector<ChangelogVersion> LoadChangelog() {
             const char defaultJson[] = "{\n"
                 "  \"versions\": [\n"
                 "    {\n"
-                "      \"version\": \"1.1.1\",\n"
+                "      \"version\": \"1.1.2\",\n"
                 "      \"date\": \"2026-11-15\",\n"
-                "      \"title\": \"Dia Tune-ups v1.1.1\",\n"
+                "      \"title\": \"Dia Tune-ups v1.1.2\",\n"
                 "      \"changes\": [\n"
                 "        \"In-App Tune-ups Settings: Full settings page inside Dia with live toggle switches and preset picker.\",\n"
                 "        \"Developer Mode Toolbar: Arc-style dev toolbar with responsive inspect, console, network, and extension tools.\",\n"
@@ -7354,7 +7354,7 @@ static RemoteVersionInfo CheckChangelogVersion() {
                 info.date = std::wstring(first.GetNamedString(L"date", L""));
                 info.title = std::wstring(first.GetNamedString(L"title", L""));
                 info.success = true;
-                int curA = 1, curB = 1, curC = 1, remA = 0, remB = 0, remC = 0;
+                int curA = 1, curB = 1, curC = 2, remA = 0, remB = 0, remC = 0;
                 swscanf_s(info.version.c_str(), L"%d.%d.%d", &remA, &remB, &remC);
                 info.isNewer = remA > curA || (remA == curA && remB > curB) ||
                                (remA == curA && remB == curB && remC > curC);
@@ -7449,7 +7449,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Update Dia Tune-ups");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"Version 1.1.1 • One click checks GitHub and installs the newest build.");
+        d.Text(L"Version 1.1.2 • One click checks GitHub and installs the newest build.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);
@@ -7564,7 +7564,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Changelog");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"View what's new in version 1.1.1 and recent changes.");
+        d.Text(L"View what's new in version 1.1.2 and recent changes.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);
