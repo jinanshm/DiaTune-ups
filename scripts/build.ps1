@@ -143,6 +143,7 @@ $xamlSource = Join-Path $root 'src\xaml\diatweaks-xaml.cpp'
 $peekSource = Join-Path $root 'src\xaml\peek.cpp'
 $devModeSource = Join-Path $root 'src\xaml\devmode.cpp'
 $cdpSource = Join-Path $root 'src\xaml\cdp.cpp'
+$historySource = Join-Path $root 'src\xaml\history.cpp'
 $xamlDef = Join-Path $root 'src\xaml\diatweaks-xaml.def'
 $injectSource = Join-Path $root 'src\injector\diatweaks-inject.cpp'
 $dll = Join-Path $outDir 'diatweaks-xaml.dll'
@@ -192,7 +193,7 @@ or put them in src\xaml\projection.
         "call `"$vcvars`" >nul",
         'if errorlevel 1 exit /b 1',
         "cd /d `"$objDir`"",
-        "cl /nologo /LD /std:c++20 /EHsc /MT /O2 /W3 /bigobj /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /I`"$projection`" /I`"$cppwinrt`" `"$xamlSource`" `"$peekSource`" `"$devModeSource`" `"$cdpSource`" /Fe:`"$targetDll`" /link /DEF:`"$xamlDef`" /SUBSYSTEM:WINDOWS ole32.lib oleaut32.lib runtimeobject.lib windowsapp.lib user32.lib dwmapi.lib shell32.lib gdi32.lib gdiplus.lib d3d11.lib dcomp.lib d2d1.lib comctl32.lib msimg32.lib dxgi.lib windowscodecs.lib winhttp.lib ws2_32.lib",
+        "cl /nologo /LD /std:c++20 /EHsc /MT /O2 /W3 /bigobj /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /I`"$projection`" /I`"$cppwinrt`" `"$xamlSource`" `"$peekSource`" `"$devModeSource`" `"$cdpSource`" `"$historySource`" /Fe:`"$targetDll`" /link /DEF:`"$xamlDef`" /SUBSYSTEM:WINDOWS ole32.lib oleaut32.lib runtimeobject.lib windowsapp.lib user32.lib dwmapi.lib shell32.lib gdi32.lib gdiplus.lib d3d11.lib dcomp.lib d2d1.lib comctl32.lib msimg32.lib dxgi.lib windowscodecs.lib winhttp.lib ws2_32.lib",
         'if errorlevel 1 exit /b 3',
         "cl /nologo /std:c++17 /EHsc /MT /O2 /W3 /DUNICODE /D_UNICODE `"$injectSource`" /Fe:`"$injector`"",
         'exit /b %ERRORLEVEL%'

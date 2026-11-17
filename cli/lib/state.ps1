@@ -34,6 +34,7 @@ $script:XamlKeys = @(
     'hidePinnedTabBorder',
     'hideTabHoverCard',
     'hideLinkAddress',
+    'hideHistorySuggestions',
     'translucentSidebar',
     'sidebarGrain',
     'peek',

@@ -125,6 +125,7 @@ All changes made in the Settings tab update Dia instantly in real-time and stay 
 | `peekTrigger` | Peek trigger shortcut | Supported | How Peek opens: `shift` (Shift+click), `hold` (Hold on link), `ctrlShift`, or `alt`. |
 | `peekAnimation` | Peek animation style | Supported | How the card flies in and out: `genie`, `easeInOut`, or `zoom`. |
 | `hideLinkAddress` | Hide link address | Supported | Hides the hover URL preview bubble at the bottom corner of the window. |
+| `hideHistorySuggestions` | Hide history suggestions | Supported | Keeps visited pages and past searches out of address and command bar suggestions. Searching, Chat, search suggestions and open tabs still show; browsing history itself is untouched. |
 | `cleanSearchBox` | Clean search box | Supported | Streamlines the New Tab and Command Bar (`Ctrl+T` / `Ctrl+L`) into a clean single-line input. |
 | `newTabPainting` | Daily painting wallpaper | Supported | Displays the Daily Brief's curated fine art of the day as New Tab wallpaper with caption metadata. |
 | `dontPopUpDownloads` | Don't pop up downloads | Supported | Stops the downloads list from automatically opening on every download. |

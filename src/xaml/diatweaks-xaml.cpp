@@ -473,6 +473,7 @@ struct TweakCfg {
     bool sidebarGrain = false;
     bool hideTabHoverCard = false;
     bool hideLinkAddress = false;
+    bool hideHistorySuggestions = false;
     bool dontPopUpDownloads = false;
     bool squareSidebarCorners = false;
     bool keepWindowsActive = false;
@@ -522,6 +523,7 @@ static std::atomic<bool> g_profileEmoji{false};
 static std::atomic<bool> g_sidebarGrain{false};
 static std::atomic<bool> g_hideTabHoverCard{false};
 static std::atomic<bool> g_hideLinkAddress{false};
+static std::atomic<bool> g_hideHistorySuggestions{false};
 static std::atomic<bool> g_dontPopUpDownloads{false};
 static std::atomic<bool> g_squareSidebarCorners{false};
 static std::atomic<bool> g_keepWindowsActive{false};
@@ -588,6 +590,8 @@ static void ReadConfig() {
         GetPrivateProfileIntW(L"tweaks", L"hideTabHoverCard", 0, g_configPath) != 0;
     g_cfg.hideLinkAddress =
         GetPrivateProfileIntW(L"tweaks", L"hideLinkAddress", 0, g_configPath) != 0;
+    g_cfg.hideHistorySuggestions =
+        GetPrivateProfileIntW(L"tweaks", L"hideHistorySuggestions", 0, g_configPath) != 0;
     g_cfg.dontPopUpDownloads =
         GetPrivateProfileIntW(L"tweaks", L"dontPopUpDownloads", 0, g_configPath) != 0;
     g_cfg.squareSidebarCorners =
@@ -704,6 +708,7 @@ static void ReadConfig() {
     g_sidebarGrain.store(g_cfg.sidebarGrain);
     g_hideTabHoverCard.store(g_cfg.hideTabHoverCard);
     g_hideLinkAddress.store(g_cfg.hideLinkAddress);
+    g_hideHistorySuggestions.store(g_cfg.hideHistorySuggestions);
     g_dontPopUpDownloads.store(g_cfg.dontPopUpDownloads);
     g_squareSidebarCorners.store(g_cfg.squareSidebarCorners);
     g_keepWindowsActive.store(g_cfg.keepWindowsActive);
@@ -730,7 +735,7 @@ static int CfgStamp() {
            (g_cfg.hideLinkAddress ? 1048576 : 0) | (g_cfg.dontPopUpDownloads ? 2097152 : 0) |
            (g_cfg.squareSidebarCorners ? 4194304 : 0) | (g_cfg.keepWindowsActive ? 8388608 : 0) |
            (g_cfg.newTabPainting ? 16777216 : 0) | (g_cfg.segoeUiVariable ? 33554432 : 0) |
-           (g_cfg.notoEmoji ? 67108864 : 0);
+           (g_cfg.notoEmoji ? 67108864 : 0) | (g_cfg.hideHistorySuggestions ? 134217728 : 0);
 }
 
 // ---------------------------------------------------------------- tree model
@@ -1474,6 +1479,7 @@ bool Engine_TweakOn(const std::wstring& key) {
     if (key == L"dontPopUpDownloads") return g_dontPopUpDownloads.load();
     if (key == L"hideUpgradeBanner") return g_hideUpgradeBanner.load();
     if (key == L"hideLinkAddress") return g_hideLinkAddress.load();
+    if (key == L"hideHistorySuggestions") return g_hideHistorySuggestions.load();
     return false;
 }
 
@@ -1560,7 +1566,7 @@ void Ui_OpenInNewTab(const std::wstring& text) {
     ShellExecuteW(nullptr, L"open", text.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-void History_Tick() {}
+// Implemented in history.cpp (the Hide history suggestions tweak).
 void Media_Tick() {}
 
 static HWND t_peekWindow = nullptr;
@@ -5578,6 +5584,7 @@ static bool GetTweakBool(const std::wstring& key) {
     if (key == L"sidebarGrain") return g_cfg.sidebarGrain;
     if (key == L"hideTabHoverCard") return g_cfg.hideTabHoverCard;
     if (key == L"hideLinkAddress") return g_cfg.hideLinkAddress;
+    if (key == L"hideHistorySuggestions") return g_cfg.hideHistorySuggestions;
     if (key == L"dontPopUpDownloads") return g_cfg.dontPopUpDownloads;
     if (key == L"squareSidebarCorners") return g_cfg.squareSidebarCorners;
     if (key == L"keepWindowsActive") return g_cfg.keepWindowsActive;
@@ -7487,6 +7494,7 @@ static mux::FrameworkElement BuildPage(const NavHook& hook) {
     pageRows.push_back(BuildRow({L"peekAnimation", L"Peek animation", L"How the card flies in and out: Genie, Ease In/Out, or Zoom.", L"\uE7F4",
         {{L"genie", L"Genie"}, {L"easeInOut", L"Ease In/Out"}, {L"zoom", L"Zoom"}}}));
     pageRows.push_back(BuildRow({L"hideLinkAddress", L"Hide link address", L"Hide the hover link URL preview bubble at the bottom corner of the window.", L"\uE71B"}));
+    pageRows.push_back(BuildRow({L"hideHistorySuggestions", L"Hide history suggestions", L"Keep visited pages and past searches out of address and command bar suggestions. Searching, Chat and open tabs still show.", L"\uE81C"}));
     pageRows.push_back(BuildRow({L"cleanSearchBox", L"Clean search box", L"Streamline the New Tab and Command Bar into a clean single-line input.", L"\uE721"}));
     pageRows.push_back(BuildRow({L"newTabPainting", L"Daily painting wallpaper", L"Display the Daily Brief's painting of the day as the New Tab page wallpaper.", L"\uEB9F"}));
     pageRows.push_back(BuildPaintingTintOptionsRow());
@@ -8113,6 +8121,7 @@ private:
         }
 
         Peek_Tick();
+        History_Tick();
         DevMode::Tick();
     }
 };

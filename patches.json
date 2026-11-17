@@ -332,6 +332,14 @@
       "mechanism": "xaml"
     },
     {
+      "key": "hideHistorySuggestions",
+      "order": 105.5,
+      "title": "Hide history suggestions",
+      "detail": "Keep pages you've visited and past searches out of address and command bar suggestions. Searching, Chat, search suggestions and open tabs still show.",
+      "supported": true,
+      "mechanism": "xaml"
+    },
+    {
       "key": "normalLaunch",
       "order": 106,
       "title": "Patch Dia however it's opened",
