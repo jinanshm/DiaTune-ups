@@ -67,6 +67,7 @@ jobs:
 
           # Copy root files
           Copy-Item -Path "diatweaks.cmd" -Destination "$distDir\" -Force
+          Copy-Item -Path "diatweaks.vbs" -Destination "$distDir\" -Force
           Copy-Item -Path "patches.json" -Destination "$distDir\" -Force
           Copy-Item -Path "paintings.json" -Destination "$distDir\" -Force
           Copy-Item -Path "changelog.json" -Destination "$distDir\" -Force

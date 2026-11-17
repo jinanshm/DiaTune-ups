@@ -1156,7 +1156,13 @@ static void UpdateTrailingStack(InstanceHandle handle) {
     // that toolbar is present, even if the page tracker briefly disagrees about
     // the active tab - otherwise Dia's hover-only opacity binding is restored
     // and the developer icons seem to appear only while hovering the toolbar.
-    bool devModeActive = DevMode::ActiveTabInDevMode() || DevMode::ToolbarActive();
+    // While the Developer Mode tweak is on, keep this stack opaque. Dia's
+    // default hides these trailing buttons until the toolbar is hovered; that
+    // would hide our dev icons and striped border the moment the pointer left.
+    // Basing this on the tweak (not the flickering per-tab page detection) makes
+    // the toolbar independent of Dia's hover state. UpdateTrailingStack returns
+    // early on the New Tab page, so that page keeps Dia's own behaviour.
+    bool devModeActive = DevMode::Enabled();
     bool on = (g_showAddressField.load() && !g_hideToolbar.load()) || devModeActive;
 
     std::lock_guard<std::mutex> lock(g_stateLock);

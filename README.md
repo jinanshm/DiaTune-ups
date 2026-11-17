@@ -12,19 +12,41 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ## What's New in Version 1.1.1
 
-- 🦶 **Hover-free Developer Toolbar**: The dev toolbar icons and striped tab mark now stay visible without hovering the toolbar.
-- ⬆️ **One-click, build-aware Updates**: A single button checks GitHub and installs the newest build, detected by git commit rather than published releases.
-- 🪟 **Silent Launch & Apply**: `diatweaks.vbs` and the updater run with no CMD window.
-- 🎛️ **Settings › Tune-ups Panel**: Full native settings page directly inside Dia's settings window with real-time toggle switches, presets, and sliders.
-- 🛠️ **Developer Mode Toolbar**: Arc-style developer tools toolbar (device inspection, console, network panel, element inspector, screenshot captures, and extensions).
-- 👁️ **Peek Link Previews**: Preview links in floating cards before opening (`Shift+click`, `Hold`, `Ctrl+Shift`, `Alt`) with *Genie*, *Ease In/Out*, or *Zoom* animations.
-- 🎨 **Tactile Sidebar Textures**: Procedural grain textures (*Sand*, *Fine Grain*, *Denim weave*, and *Paper fiber*) with customizable intensity and softness sliders.
-- ✨ **Window Backdrop Materials**: Windows 11 *Mica*, *Mica Alt*, and *Acrylic* materials combined with edge-to-edge frameless geometry.
-- 🖼️ **Daily Painting Wallpaper**: Automatic high-resolution fine-art wallpaper on the New Tab page from Dia's Morning Brief catalogue.
-- 🔤 **Segoe UI Variable Typography**: Force Windows 11's Segoe UI Variable font for crisp, legible UI and web fonts.
-- 🔍 **Clean Search Box**: Minimalist single-line New Tab and Command Bar (`Ctrl+T` / `Ctrl+L`).
-- 🔄 **In-Panel Updates & Changelog**: Built-in release update checker and expandable changelog viewer directly within the Tune-ups panel.
-- ☕ **Support the Developer**: Integrated [Buy Me a Coffee](https://buymeacoffee.com/jinansh_) link.
+- **Hover-free Developer Toolbar**: The dev toolbar icons and striped tab mark now stay visible without hovering the toolbar.
+- **One-click, build-aware Updates**: A single button checks GitHub and installs the newest build, detected by git commit rather than published releases.
+- **Silent Launch & Apply**: `diatweaks.vbs` and the updater run with no CMD window.
+- **Settings Tune-ups Panel**: Full native settings page directly inside Dia's settings window with real-time toggle switches, presets, and sliders.
+- **Developer Mode Toolbar**: Arc-style developer tools toolbar (device inspection, console, network panel, element inspector, screenshot captures, and extensions).
+- **Peek Link Previews**: Preview links in floating cards before opening (`Shift+click`, `Hold`, `Ctrl+Shift`, `Alt`) with *Genie*, *Ease In/Out*, or *Zoom* animations.
+- **Tactile Sidebar Textures**: Procedural grain textures (*Sand*, *Fine Grain*, *Denim weave*, and *Paper fiber*) with customizable intensity and softness sliders.
+- **Window Backdrop Materials**: Windows 11 *Mica*, *Mica Alt*, and *Acrylic* materials combined with edge-to-edge frameless geometry.
+- **Daily Painting Wallpaper**: Automatic high-resolution fine-art wallpaper on the New Tab page from Dia's Morning Brief catalogue.
+- **Segoe UI Variable Typography**: Force Windows 11's Segoe UI Variable font for crisp, legible UI and web fonts.
+- **Clean Search Box**: Minimalist single-line New Tab and Command Bar (`Ctrl+T` / `Ctrl+L`).
+- **In-Panel Updates & Changelog**: Built-in release update checker and expandable changelog viewer directly within the Tune-ups panel.
+- **Support the Developer**: Integrated [Buy Me a Coffee](https://buymeacoffee.com/jinansh_) link.
+
+---
+
+## Installation
+
+### Install from a release (recommended)
+
+1. Download `DiaTuneups-Windows-v1.1.1.zip` from the [Releases page](https://github.com/jinanshm/DiaTweaks-Win/releases).
+2. Extract it to a folder of your choice, for example `C:\DiaTuneups`.
+3. Double-click `diatweaks.vbs` in that folder to apply the tweaks, or use a shortcut to `wscript.exe "C:\DiaTuneups\diatweaks.vbs" launch` to open Dia and apply them without a console window.
+4. To update later, open Dia's Settings, go to the Tune-ups tab, and click **Update Tune-ups**.
+
+### Install from source
+
+Requires Windows 11, [Dia](https://www.diabrowser.com), PowerShell, and (for building) the Visual Studio C++ Build Tools with the Desktop development with C++ workload.
+
+```powershell
+git clone https://github.com/jinanshm/DiaTweaks-Win.git
+cd DiaTweaks-Win
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+diatweaks.cmd launch
+```
 
 ---
 
@@ -216,7 +238,7 @@ The compiled binaries are placed into `bin\`:
 
 If you find DiaTweaks helpful and enjoy using Dia with tune-ups on Windows, consider buying me a coffee to support maintenance and future updates:
 
-👉 **[buymeacoffee.com/jinansh_](https://buymeacoffee.com/jinansh_)** ☕
+**[buymeacoffee.com/jinansh_](https://buymeacoffee.com/jinansh_)**
 
 ---
 

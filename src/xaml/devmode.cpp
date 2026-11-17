@@ -373,7 +373,15 @@ void SaveSites() {
 // ---- sites ----------------------------------------------------------------
 
 std::wstring OriginOf(const std::wstring& url) {
-    if (url.empty()) return std::wstring();
+    // Dia's address bar can include trailing whitespace; without trimming it the
+    // origin flips between matching and not matching the dev-mode site list,
+    // which tears the toolbar down and restores the hover-only toolbar opacity.
+    std::wstring u = url;
+    while (!u.empty() && (u.front() == L' ' || u.front() == L'\t' || u.front() == L'\r' || u.front() == L'\n'))
+        u.erase(u.begin());
+    while (!u.empty() && (u.back() == L' ' || u.back() == L'\t' || u.back() == L'\r' || u.back() == L'\n'))
+        u.pop_back();
+    if (u.empty()) return std::wstring();
     if (url.compare(0, 6, L"dia://") == 0 ||
         url.compare(0, 9, L"chrome://") == 0 ||
         url.compare(0, 6, L"about:") == 0 ||
@@ -420,12 +428,17 @@ bool IsLocalhost(const std::wstring& origin) {
 }
 
 std::wstring NormalizeUrl(const std::wstring& raw) {
-    if (raw.empty()) return L"";
-    if (raw.find(L"://") != std::wstring::npos) return raw;
-    if (raw.starts_with(L"localhost") || raw.starts_with(L"127.0.0.1") || raw.starts_with(L"[::1]")) {
-        return L"http://" + raw;
+    std::wstring s = raw;
+    while (!s.empty() && (s.front() == L' ' || s.front() == L'\t' || s.front() == L'\r' || s.front() == L'\n'))
+        s.erase(s.begin());
+    while (!s.empty() && (s.back() == L' ' || s.back() == L'\t' || s.back() == L'\r' || s.back() == L'\n'))
+        s.pop_back();
+    if (s.empty()) return L"";
+    if (s.find(L"://") != std::wstring::npos) return s;
+    if (s.starts_with(L"localhost") || s.starts_with(L"127.0.0.1") || s.starts_with(L"[::1]")) {
+        return L"http://" + s;
     }
-    return L"https://" + raw;
+    return L"https://" + s;
 }
 
 std::wstring GetAddressBarUrl() {
@@ -3714,20 +3727,15 @@ void HideToolbar() {
 }
 
 void UpdateToolbar() {
+    // Only ever add/refresh the toolbar here. Never tear it down from a state
+    // reading: the page tracker can momentarily say "not in dev mode" while the
+    // user is still on a dev tab, and tearing down restores Dia's hover-only
+    // opacity (icons and stripes vanish until the next hover). Teardown happens
+    // on definite events instead: a real tab switch, the New Tab page, or the
+    // tweak being switched off (see Tick and SetEnabled).
     if (ActiveTabInDevMode()) {
         g_toolbarHideAt.store(0);
         ShowToolbar();
-        return;
-    }
-    ULONGLONG deadline = g_toolbarHideAt.load();
-    if (!g_toolbarKeep && !deadline) return;  // nothing placed, nothing to hide
-    if (!deadline) {
-        g_toolbarHideAt.store(GetTickCount64() + kToolbarHideDelayMs);
-        return;
-    }
-    if (GetTickCount64() >= deadline) {
-        g_toolbarHideAt.store(0);
-        HideToolbar();
     }
 }
 
