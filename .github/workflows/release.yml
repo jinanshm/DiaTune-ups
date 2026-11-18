@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release (e.g. v1.1.2)'
+        description: 'Tag name for release (e.g. v1.1.3)'
         required: true
-        default: 'v1.1.2'
+        default: 'v1.1.3'
 
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
           if (-not $ver -or $ver -eq "master") {
             $ver = "${{ github.event.inputs.tag_name }}"
           }
-          if (-not $ver) { $ver = "v1.1.2" }
+          if (-not $ver) { $ver = "v1.1.3" }
           Write-Host "Releasing version: $ver"
           "version=$ver" >> $env:GITHUB_OUTPUT
 

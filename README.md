@@ -1,6 +1,6 @@
 # DiaTweaks (Dia Tune-ups) for Windows
 
-[![Version 1.1.2](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/jinanshm/DiaTweaks-Win/releases)
+[![Version 1.1.3](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/jinanshm/DiaTweaks-Win/releases)
 [![Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4.svg)](https://microsoft.com/windows)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20Developer-orange.svg)](https://buymeacoffee.com/jinansh_)
 
@@ -10,23 +10,13 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ---
 
-## What's New in Version 1.1.2
+## What's New in Version 1.1.3
 
-- **Hide history suggestions**: Visited pages and past searches stay out of address and command bar suggestions, ported from zioder/WinDiaTweaks.
-- **Arc pinned tabs**: Hovering a pinned tab shows a minus to return it to its page, or a close button when it is already there.
-- **Hover-free Developer Toolbar**: The dev toolbar icons and striped tab mark now stay visible without hovering the toolbar.
-- **One-click, build-aware Updates**: A single button checks GitHub and installs the newest build, detected by git commit rather than published releases.
-- **Silent Launch & Apply**: `diatweaks.vbs` and the updater run with no CMD window.
-- **Settings Tune-ups Panel**: Full native settings page directly inside Dia's settings window with real-time toggle switches, presets, and sliders.
-- **Developer Mode Toolbar**: Arc-style developer tools toolbar (device inspection, console, network panel, element inspector, screenshot captures, and extensions).
-- **Peek Link Previews**: Preview links in floating cards before opening (`Shift+click`, `Hold`, `Ctrl+Shift`, `Alt`) with *Genie*, *Ease In/Out*, or *Zoom* animations.
-- **Tactile Sidebar Textures**: Procedural grain textures (*Sand*, *Fine Grain*, *Denim weave*, and *Paper fiber*) with customizable intensity and softness sliders.
-- **Window Backdrop Materials**: Windows 11 *Mica*, *Mica Alt*, and *Acrylic* materials combined with edge-to-edge frameless geometry.
-- **Daily Painting Wallpaper**: Automatic high-resolution fine-art wallpaper on the New Tab page from Dia's Morning Brief catalogue.
-- **Segoe UI Variable Typography**: Force Windows 11's Segoe UI Variable font for crisp, legible UI and web fonts.
-- **Clean Search Box**: Minimalist single-line New Tab and Command Bar (`Ctrl+T` / `Ctrl+L`).
-- **In-Panel Updates & Changelog**: Built-in release update checker and expandable changelog viewer directly within the Tune-ups panel.
-- **Support the Developer**: Integrated [Buy Me a Coffee](https://buymeacoffee.com/jinansh_) link.
+- **Reliable patching however Dia opens**: The startup watcher targets Dia's browser process, confirms the helper is loaded, and retries until it is, so taskbar, Start, pinned, link and `diatweaks launch` starts all get patched.
+- **Instant Developer Mode teardown**: Turning the tweak off removes the toolbar icons and striped tab mark immediately, and fully restores Dia's hover styling and extension buttons.
+- **Faster background patching**: Already-loaded helpers are not re-injected, unchanged config is not rewritten, and the idle watch tick costs about 0.1 s.
+- **Frame tweaks stay put**: Edge-to-edge, square corners and window material are re-applied while enabled, so new windows and redraws keep their frame.
+- **Everything from 1.1.2**: Hide history suggestions, Arc pinned tabs, hover-free dev toolbar, one-click build-aware updates, and the silent launcher.
 
 ---
 
@@ -34,7 +24,7 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ### Install from a release (recommended)
 
-1. Download `DiaTuneups-Windows-v1.1.2.zip` from the [Releases page](https://github.com/jinanshm/DiaTweaks-Win/releases).
+1. Download `DiaTuneups-Windows-v1.1.3.zip` from the [Releases page](https://github.com/jinanshm/DiaTweaks-Win/releases).
 2. Extract it to a folder of your choice, for example `C:\DiaTuneups`.
 3. Double-click `diatweaks.vbs` in that folder to apply the tweaks, or use a shortcut to `wscript.exe "C:\DiaTuneups\diatweaks.vbs" launch` to open Dia and apply them without a console window.
 4. To update later, open Dia's Settings, go to the Tune-ups tab, and click **Update Tune-ups**.

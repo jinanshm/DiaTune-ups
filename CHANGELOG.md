@@ -2,6 +2,16 @@
 
 All notable changes to **DiaTweaks (Dia Tune-ups) for Windows** will be documented in this file.
 
+## [1.1.3] - 2026-11-18
+
+### Fixed
+- **Patching no longer misses Dia.** The launch watcher now targets Dia's browser process instead of every `Dia.exe` helper, checks whether the XAML helper is already loaded, and retries every three seconds until it is. Dia is patched whether it starts from the taskbar, Start, a pinned icon, a link, or `diatweaks launch`.
+- **Developer Mode toolbar clears immediately.** Turning the tweak off now removes the icon row and striped tab mark at once instead of waiting on the page tracker. Teardown detaches the strip from whatever parent it currently has, restores Dia's hover opacity chain, the extensions repeater's original visibility, and the host's content, so no ghost icons or hover-only rows are left behind. The short grace period is only used when the page state is genuinely ambiguous.
+- **Window frame tweaks survive redraws.** Edge-to-edge, square corners and the window material are re-applied about once a second while enabled, so windows opened after startup and Dia's own frame redraws keep their styling.
+
+### Changed
+- **Faster background patching.** `apply` skips re-injection when the helper is already in Dia, profile font rewrites and keep-awake process scans are marker-gated, and `xaml.cfg` plus the changelog copy are written only when their content changes (atomically). The startup watcher's idle tick now costs about 0.1 s instead of seconds.
+
 ## [1.1.2] - 2026-11-18
 
 ### Added

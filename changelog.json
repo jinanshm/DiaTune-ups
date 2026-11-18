@@ -1,6 +1,17 @@
 {
   "versions": [
     {
+      "version": "1.1.3",
+      "date": "2026-11-18",
+      "title": "Dia Tune-ups v1.1.3",
+      "changes": [
+        "Patch Dia however it's opened: the launch watcher now targets Dia's browser process, checks whether the helper is already loaded, and retries every few seconds instead of injecting blindly once.",
+        "Faster background patching: apply skips re-injection when the helper is already loaded, and profile, marker and xaml.cfg work only runs when something actually changed, bringing the idle watch tick to roughly 0.1 s.",
+        "Developer Mode toolbar now disappears immediately when the tweak is turned off, and its teardown restores Dia's hover styling, extension buttons and host content so no icons are left behind.",
+        "Window frame tweaks (edge-to-edge, square corners, window material) are re-applied about once a second while enabled, so newly opened windows and Dia's own redraws keep their frame."
+      ]
+    },
+    {
       "version": "1.1.2",
       "date": "2026-11-18",
       "title": "Dia Tune-ups v1.1.2",
