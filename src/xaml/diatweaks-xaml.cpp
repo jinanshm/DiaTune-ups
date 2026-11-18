@@ -7104,15 +7104,13 @@ static std::vector<ChangelogVersion> LoadChangelog() {
 
     auto GetDefaultChangelog = []() -> std::vector<ChangelogVersion> {
         ChangelogVersion v;
-        v.version = L"1.1.3";
+        v.version = L"1.1.4";
         v.date = L"2026-11-18";
-        v.title = L"Dia Tune-ups v1.1.3";
+        v.title = L"Dia Tune-ups v1.1.4";
         v.changes = {
-            L"Patch Dia however it's opened: the launch watcher targets the browser process and retries until the helper is loaded.",
-            L"Faster background patching: loaded helpers are not re-injected and unchanged config is not rewritten; the idle watch tick costs about 0.1 s.",
-            L"Developer Mode toolbar and tab mark disappear immediately when the tweak is turned off, with Dia's hover styling and extension buttons restored.",
-            L"Edge-to-edge, square corners and window material are re-applied about once a second while enabled, so new windows and redraws keep their frame.",
-            L"Everything from 1.1.2: hide history suggestions, Arc pinned tabs, hover-free dev toolbar, one-click build-aware updates, and the silent launcher."
+            L"Profile emojis no longer appear in the top tab layout: the custom emoji row is only used while Dia's sidebar is open, and the native switcher stays untouched when it is not.",
+            L"The developer-mode tab mark now draws a solid black ring with yellow dashes on top, matching the yellow-and-black dashed outline.",
+            L"Everything from 1.1.3: reliable patching however Dia opens, instant Developer Mode teardown, faster background patching, and frame tweaks that survive redraws."
         };
         return {v};
     };
@@ -7188,15 +7186,13 @@ static std::vector<ChangelogVersion> LoadChangelog() {
             const char defaultJson[] = "{\n"
                 "  \"versions\": [\n"
                 "    {\n"
-                "      \"version\": \"1.1.3\",\n"
+                "      \"version\": \"1.1.4\",\n"
                 "      \"date\": \"2026-11-18\",\n"
-                "      \"title\": \"Dia Tune-ups v1.1.3\",\n"
+                "      \"title\": \"Dia Tune-ups v1.1.4\",\n"
                 "      \"changes\": [\n"
-                "        \"Patch Dia however it's opened: the launch watcher targets the browser process and retries until the helper is loaded.\",\n"
-                "        \"Faster background patching: loaded helpers are not re-injected and unchanged config is not rewritten; the idle watch tick costs about 0.1 s.\",\n"
-                "        \"Developer Mode toolbar and tab mark disappear immediately when the tweak is turned off, with Dia's hover styling and extension buttons restored.\",\n"
-                "        \"Edge-to-edge, square corners and window material are re-applied about once a second while enabled, so new windows and redraws keep their frame.\",\n"
-                "        \"Everything from 1.1.2: hide history suggestions, Arc pinned tabs, hover-free dev toolbar, one-click build-aware updates, and the silent launcher.\"\n"
+                "        \"Profile emojis no longer appear in the top tab layout: the custom emoji row is only used while Dia's sidebar is open, and the native switcher stays untouched when it is not.\",\n"
+                "        \"The developer-mode tab mark now draws a solid black ring with yellow dashes on top, matching the yellow-and-black dashed outline.\",\n"
+                "        \"Everything from 1.1.3: reliable patching however Dia opens, instant Developer Mode teardown, faster background patching, and frame tweaks that survive redraws.\"\n"
                 "      ]\n"
                 "    }\n"
                 "  ]\n"
@@ -7443,7 +7439,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Update Dia Tune-ups");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"Version 1.1.3 • One click checks GitHub and installs the newest build.");
+        d.Text(L"Version 1.1.4 • One click checks GitHub and installs the newest build.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);
@@ -7558,7 +7554,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Changelog");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"View what's new in version 1.1.3 and recent changes.");
+        d.Text(L"View what's new in version 1.1.4 and recent changes.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);

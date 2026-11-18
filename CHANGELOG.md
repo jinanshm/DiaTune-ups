@@ -2,6 +2,12 @@
 
 All notable changes to **DiaTweaks (Dia Tune-ups) for Windows** will be documented in this file.
 
+## [1.1.4] - 2026-11-18
+
+### Fixed
+- **Profile emojis stay in the sidebar.** With the sidebar closed (the top tab layout) the custom emoji row no longer appears in the title bar. The tweak now only replaces the space switcher while Dia's sidebar is open; otherwise Dia's native switcher is left exactly as Dia draws it.
+- **The developer-mode tab mark matches Dia's dev styling.** The active developer tab is outlined with a solid black ring and yellow dashes on top, so the outline reads as yellow dashes separated by black instead of a yellow ring with black dashes.
+
 ## [1.1.3] - 2026-11-18
 
 ### Fixed

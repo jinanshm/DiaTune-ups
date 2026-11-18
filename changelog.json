@@ -1,6 +1,15 @@
 {
   "versions": [
     {
+      "version": "1.1.4",
+      "date": "2026-11-18",
+      "title": "Dia Tune-ups v1.1.4",
+      "changes": [
+        "Profile emojis no longer appear in the top tab layout: the custom emoji row is only used while Dia's sidebar is open, and the native space switcher stays untouched when it is not.",
+        "The developer-mode tab mark now draws a solid black ring with yellow dashes on top, matching the yellow-and-black dashed outline."
+      ]
+    },
+    {
       "version": "1.1.3",
       "date": "2026-11-18",
       "title": "Dia Tune-ups v1.1.3",

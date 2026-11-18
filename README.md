@@ -1,6 +1,6 @@
 # DiaTweaks (Dia Tune-ups) for Windows
 
-[![Version 1.1.3](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/jinanshm/DiaTweaks-Win/releases)
+[![Version 1.1.4](https://img.shields.io/badge/version-1.1.4-blue.svg)](https://github.com/jinanshm/DiaTune-ups/releases)
 [![Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4.svg)](https://microsoft.com/windows)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20Developer-orange.svg)](https://buymeacoffee.com/jinansh_)
 
@@ -10,13 +10,11 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ---
 
-## What's New in Version 1.1.3
+## What's New in Version 1.1.4
 
-- **Reliable patching however Dia opens**: The startup watcher targets Dia's browser process, confirms the helper is loaded, and retries until it is, so taskbar, Start, pinned, link and `diatweaks launch` starts all get patched.
-- **Instant Developer Mode teardown**: Turning the tweak off removes the toolbar icons and striped tab mark immediately, and fully restores Dia's hover styling and extension buttons.
-- **Faster background patching**: Already-loaded helpers are not re-injected, unchanged config is not rewritten, and the idle watch tick costs about 0.1 s.
-- **Frame tweaks stay put**: Edge-to-edge, square corners and window material are re-applied while enabled, so new windows and redraws keep their frame.
-- **Everything from 1.1.2**: Hide history suggestions, Arc pinned tabs, hover-free dev toolbar, one-click build-aware updates, and the silent launcher.
+- **Profile emojis stay in the sidebar**: With the sidebar closed and tabs at the top, the custom emoji row no longer appears in the title bar; Dia's native space switcher keeps its default behaviour.
+- **Yellow-on-black developer tab mark**: The active developer tab now has a solid black ring with yellow dashes on top, matching the yellow-and-black dashed outline.
+- **Everything from 1.1.3**: Reliable patching however Dia opens, instant Developer Mode teardown, faster background patching, and frame tweaks that survive redraws.
 
 ---
 
@@ -24,7 +22,7 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ### Install from a release (recommended)
 
-1. Download `DiaTuneups-Windows-v1.1.3.zip` from the [Releases page](https://github.com/jinanshm/DiaTweaks-Win/releases).
+1. Download `DiaTuneups-Windows-v1.1.4.zip` from the [Releases page](https://github.com/jinanshm/DiaTune-ups/releases).
 2. Extract it to a folder of your choice, for example `C:\DiaTuneups`.
 3. Double-click `diatweaks.vbs` in that folder to apply the tweaks, or use a shortcut to `wscript.exe "C:\DiaTuneups\diatweaks.vbs" launch` to open Dia and apply them without a console window.
 4. To update later, open Dia's Settings, go to the Tune-ups tab, and click **Update Tune-ups**.
