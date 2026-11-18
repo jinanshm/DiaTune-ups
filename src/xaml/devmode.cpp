@@ -1172,36 +1172,18 @@ void DrawMark(mux::UIElement row) {
                 }
             }
 
-            if (!yellowRect) {
-                yellowRect = muxsh::Rectangle();
-                yellowRect.Name(kDevMarkYellowName);
-                yellowRect.RadiusX(8);
-                yellowRect.RadiusY(8);
-                yellowRect.StrokeThickness(2.5);
-                muxm::SolidColorBrush yellow;
-                yellow.Color(ColorFrom(kMarkYellow));
-                yellowRect.Stroke(yellow);
-                yellowRect.IsHitTestVisible(false);
-                yellowRect.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
-                yellowRect.VerticalAlignment(mux::VerticalAlignment::Stretch);
-                yellowRect.Margin(mux::Thickness{1, 1, 1, 1});
-                panel.Children().Append(yellowRect);
-            }
-            yellowRect.Visibility(mux::Visibility::Visible);
-
+            // Solid black ring first, then the yellow dashes on top: the gaps
+            // between the dashes show black, so the tab reads as a black-and-
+            // yellow dashed outline rather than a yellow ring with black gaps.
             if (!blackRect) {
                 blackRect = muxsh::Rectangle();
                 blackRect.Name(kDevMarkBlackName);
                 blackRect.RadiusX(8);
                 blackRect.RadiusY(8);
-                blackRect.StrokeThickness(2.5);
+                blackRect.StrokeThickness(3.0);
                 muxm::SolidColorBrush black;
                 black.Color(ColorFrom(kMarkBlack));
                 blackRect.Stroke(black);
-                muxm::DoubleCollection pattern;
-                pattern.Append(4.0f);
-                pattern.Append(4.0f);
-                blackRect.StrokeDashArray(pattern);
                 blackRect.IsHitTestVisible(false);
                 blackRect.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
                 blackRect.VerticalAlignment(mux::VerticalAlignment::Stretch);
@@ -1209,6 +1191,27 @@ void DrawMark(mux::UIElement row) {
                 panel.Children().Append(blackRect);
             }
             blackRect.Visibility(mux::Visibility::Visible);
+
+            if (!yellowRect) {
+                yellowRect = muxsh::Rectangle();
+                yellowRect.Name(kDevMarkYellowName);
+                yellowRect.RadiusX(8);
+                yellowRect.RadiusY(8);
+                yellowRect.StrokeThickness(3.0);
+                muxm::SolidColorBrush yellow;
+                yellow.Color(ColorFrom(kMarkYellow));
+                yellowRect.Stroke(yellow);
+                muxm::DoubleCollection pattern;
+                pattern.Append(4.0f);
+                pattern.Append(4.0f);
+                yellowRect.StrokeDashArray(pattern);
+                yellowRect.IsHitTestVisible(false);
+                yellowRect.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
+                yellowRect.VerticalAlignment(mux::VerticalAlignment::Stretch);
+                yellowRect.Margin(mux::Thickness{1, 1, 1, 1});
+                panel.Children().Append(yellowRect);
+            }
+            yellowRect.Visibility(mux::Visibility::Visible);
             return;
         }
 
@@ -1235,10 +1238,10 @@ void DrawMark(mux::UIElement row) {
 
             path.IsHitTestVisible(false);
             if (i == 0) {
-                path.Stroke(yellow);
+                path.Stroke(black);
                 path.StrokeThickness(3.0);
             } else {
-                path.Stroke(black);
+                path.Stroke(yellow);
                 path.StrokeThickness(3.0);
                 path.StrokeDashArray(pattern);
             }

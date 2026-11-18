@@ -4663,7 +4663,11 @@ static void InvokeNativeSpaceButton(size_t index) {
 }
 
 static void UpdateProfileEmoji() {
-    bool on = g_profileEmoji.load();
+    // The emoji row replaces the space switcher inside Dia's sidebar. In the
+    // top-tab layout the same switcher is placed in the title bar, where an
+    // emoji row would sit on top of Dia's own compact space buttons; there the
+    // native switcher is left exactly as Dia draws it.
+    bool on = g_profileEmoji.load() && IsSidebarOpen();
     static bool s_emojiApplied = false;
     if (!on) {
         if (!s_emojiApplied && t_spaceEmojiBars.empty()) return;
