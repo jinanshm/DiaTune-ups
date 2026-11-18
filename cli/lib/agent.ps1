@@ -20,26 +20,69 @@ if (Test-Path -LiteralPath $injectorScript) {
 }
 
 if ($Watch) {
-    # Keep DiaTweaks active whenever Dia opens
-    $seenPids = @{}
+    # Keep DiaTweaks active whenever Dia opens. Only the browser process owns
+    # Dia's XAML window; injecting into its renderer helpers just leaves timers
+    # that can never attach. Retry until the DLL is actually loaded, because
+    # Dia's XAML tree is not ready the instant the process appears.
+    $windowsHelper = Join-Path (Join-Path $root 'cli\lib') 'windows.ps1'
+    if (Test-Path -LiteralPath $windowsHelper) {
+        . $windowsHelper
+    }
+
+    $lastAttempt = @{}
     while ($true) {
         $diaProcesses = @(Get-Process -Name 'Dia' -ErrorAction SilentlyContinue)
-        foreach ($proc in $diaProcesses) {
-            if (-not $seenPids.ContainsKey($proc.Id)) {
-                $seenPids[$proc.Id] = $true
-                Start-Sleep -Milliseconds 600
-                $dll = Join-Path $binDir 'diatweaks-xaml.dll'
-                if (Test-Path -LiteralPath $dll) {
-                    if (Get-Command 'Invoke-DiaTweaksInjection' -ErrorAction SilentlyContinue) {
-                        Invoke-DiaTweaksInjection -ProcessId $proc.Id -DllPath $dll | Out-Null
-                    } elseif (Test-Path -LiteralPath (Join-Path $binDir 'diatweaks-inject.exe')) {
-                        $env:SEE_MASK_NOZONECHECKS = '1'
-                        & (Join-Path $binDir 'diatweaks-inject.exe') $proc.Id $dll 2>&1 | Out-Null
+        $target = $null
+        if ($diaProcesses.Count -gt 0) {
+            $ids = @($diaProcesses | Select-Object -ExpandProperty Id)
+            if ('DiaTweaks.Native' -as [type]) {
+                $main = @(Get-TopLevelWindows | Where-Object {
+                    $ids -contains $_.ProcessId -and
+                    $_.ClassName -eq 'WinUIDesktopWin32WindowClass' -and
+                    $_.Width -ge 400 -and $_.Height -ge 300
+                } | Select-Object -First 1)
+                if ($main) {
+                    $target = $diaProcesses | Where-Object { $_.Id -eq $main.ProcessId } | Select-Object -First 1
+                }
+            }
+            if (-not $target) {
+                # Before the window exists the browser is the oldest Dia process.
+                try {
+                    $target = $diaProcesses | Sort-Object StartTime | Select-Object -First 1
+                } catch {
+                    $target = $diaProcesses | Select-Object -First 1
+                }
+            }
+        }
+
+        if ($target) {
+            $key = "$($target.Id)"
+            $loaded = $false
+            try {
+                $loaded = @($target.Modules | Where-Object { $_.ModuleName -eq 'diatweaks-xaml.dll' }).Count -gt 0
+            } catch {
+                $loaded = $false
+            }
+
+            if (-not $loaded) {
+                $last = $lastAttempt[$key]
+                if (-not $last -or ((Get-Date) - $last).TotalSeconds -ge 3) {
+                    $lastAttempt[$key] = Get-Date
+                    $dllPath = Join-Path $binDir 'diatweaks-xaml.dll'
+                    if (Test-Path -LiteralPath $dllPath) {
+                        Start-Sleep -Milliseconds 250
+                        if (Get-Command 'Invoke-DiaTweaksInjection' -ErrorAction SilentlyContinue) {
+                            Invoke-DiaTweaksInjection -ProcessId $target.Id -DllPath $dllPath | Out-Null
+                        } elseif (Test-Path -LiteralPath (Join-Path $binDir 'diatweaks-inject.exe')) {
+                            $env:SEE_MASK_NOZONECHECKS = '1'
+                            & (Join-Path $binDir 'diatweaks-inject.exe') $target.Id $dllPath 2>&1 | Out-Null
+                        }
                     }
                 }
             }
         }
-        if ($seenPids.Count -gt 500) { $seenPids.Clear() }
+
+        if ($lastAttempt.Count -gt 200) { $lastAttempt.Clear() }
         Start-Sleep -Milliseconds 1500
     }
 } else {

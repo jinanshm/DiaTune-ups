@@ -7100,20 +7100,15 @@ static std::vector<ChangelogVersion> LoadChangelog() {
 
     auto GetDefaultChangelog = []() -> std::vector<ChangelogVersion> {
         ChangelogVersion v;
-        v.version = L"1.1.2";
-        v.date = L"2026-11-15";
-        v.title = L"Dia Tune-ups v1.1.2";
+        v.version = L"1.1.3";
+        v.date = L"2026-11-18";
+        v.title = L"Dia Tune-ups v1.1.3";
         v.changes = {
-            L"In-App Tune-ups Settings: Full settings page inside Dia with live toggle switches and preset picker.",
-            L"Developer Mode Toolbar: Arc-style dev toolbar with responsive inspect, console, network, and extension tools.",
-            L"Peek Link Preview: Preview links in floating cards with customizable shortcuts (Shift+click, Hold, Ctrl+Shift, Alt) and animations (Genie, Ease, Zoom).",
-            L"Tactile Sidebar Textures: Procedural Sand, Fine Grain, Denim weave, and Paper fiber textures with intensity and softness sliders.",
-            L"Window Backdrop Materials: Native Windows 11 Mica, Mica Alt, and Acrylic backdrops with edge-to-edge frameless geometry.",
-            L"Daily Painting Wallpaper: Automatic daily fine-art wallpaper on the New Tab page with curated artwork metadata.",
-            L"Segoe UI Variable Typography: Optional toggle to force Windows 11 Segoe UI Variable font for UI and web content.",
-            L"Clean Search Box: Streamlined single-line New Tab and Command Bar (Ctrl+T / Ctrl+L).",
-            L"Profile Emoji: Display custom emojis instead of space dots in the space switcher.",
-            L"Update Checker & Changelog: In-panel update checking, release notes viewer, and Buy Me a Coffee support card."
+            L"Patch Dia however it's opened: the launch watcher targets the browser process and retries until the helper is loaded.",
+            L"Faster background patching: loaded helpers are not re-injected and unchanged config is not rewritten; the idle watch tick costs about 0.1 s.",
+            L"Developer Mode toolbar and tab mark disappear immediately when the tweak is turned off, with Dia's hover styling and extension buttons restored.",
+            L"Edge-to-edge, square corners and window material are re-applied about once a second while enabled, so new windows and redraws keep their frame.",
+            L"Everything from 1.1.2: hide history suggestions, Arc pinned tabs, hover-free dev toolbar, one-click build-aware updates, and the silent launcher."
         };
         return {v};
     };
@@ -7189,20 +7184,15 @@ static std::vector<ChangelogVersion> LoadChangelog() {
             const char defaultJson[] = "{\n"
                 "  \"versions\": [\n"
                 "    {\n"
-                "      \"version\": \"1.1.2\",\n"
-                "      \"date\": \"2026-11-15\",\n"
-                "      \"title\": \"Dia Tune-ups v1.1.2\",\n"
+                "      \"version\": \"1.1.3\",\n"
+                "      \"date\": \"2026-11-18\",\n"
+                "      \"title\": \"Dia Tune-ups v1.1.3\",\n"
                 "      \"changes\": [\n"
-                "        \"In-App Tune-ups Settings: Full settings page inside Dia with live toggle switches and preset picker.\",\n"
-                "        \"Developer Mode Toolbar: Arc-style dev toolbar with responsive inspect, console, network, and extension tools.\",\n"
-                "        \"Peek Link Preview: Preview links in floating cards with customizable shortcuts (Shift+click, Hold, Ctrl+Shift, Alt) and animations (Genie, Ease, Zoom).\",\n"
-                "        \"Tactile Sidebar Textures: Procedural Sand, Fine Grain, Denim weave, and Paper fiber textures with intensity and softness sliders.\",\n"
-                "        \"Window Backdrop Materials: Native Windows 11 Mica, Mica Alt, and Acrylic backdrops with edge-to-edge frameless geometry.\",\n"
-                "        \"Daily Painting Wallpaper: Automatic daily fine-art wallpaper on the New Tab page with curated artwork metadata.\",\n"
-                "        \"Segoe UI Variable Typography: Optional toggle to force Windows 11 Segoe UI Variable font for UI and web content.\",\n"
-                "        \"Clean Search Box: Streamlined single-line New Tab and Command Bar (Ctrl+T / Ctrl+L).\",\n"
-                "        \"Profile Emoji: Display custom emojis instead of space dots in the space switcher.\",\n"
-                "        \"Update Checker & Changelog: In-panel update checking, release notes viewer, and Buy Me a Coffee support card.\"\n"
+                "        \"Patch Dia however it's opened: the launch watcher targets the browser process and retries until the helper is loaded.\",\n"
+                "        \"Faster background patching: loaded helpers are not re-injected and unchanged config is not rewritten; the idle watch tick costs about 0.1 s.\",\n"
+                "        \"Developer Mode toolbar and tab mark disappear immediately when the tweak is turned off, with Dia's hover styling and extension buttons restored.\",\n"
+                "        \"Edge-to-edge, square corners and window material are re-applied about once a second while enabled, so new windows and redraws keep their frame.\",\n"
+                "        \"Everything from 1.1.2: hide history suggestions, Arc pinned tabs, hover-free dev toolbar, one-click build-aware updates, and the silent launcher.\"\n"
                 "      ]\n"
                 "    }\n"
                 "  ]\n"
@@ -7449,7 +7439,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Update Dia Tune-ups");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"Version 1.1.2 • One click checks GitHub and installs the newest build.");
+        d.Text(L"Version 1.1.3 • One click checks GitHub and installs the newest build.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);
@@ -7564,7 +7554,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Changelog");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"View what's new in version 1.1.2 and recent changes.");
+        d.Text(L"View what's new in version 1.1.3 and recent changes.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);
@@ -8465,8 +8455,23 @@ private:
         bool tabChanged = (currentIsNewTab != s_lastIsNewTab);
         s_lastIsNewTab = currentIsNewTab;
 
-        if (configChanged) {
-            ApplyDwmToProcessWindows();
+        // Window-frame tweaks belong to the window, so they must be applied to
+        // every window Dia opens, not only when the config changed. Keeping
+        // this on a slow tick means a window opened long after startup is
+        // patched within a second even if the CLI watcher is not running. Stay
+        // out of DWM entirely while every frame tweak is off.
+        static ULONGLONG s_lastDwmSync = 0;
+        static bool s_dwmTweaksWereApplied = false;
+        ULONGLONG nowTicks = GetTickCount64();
+        if (configChanged || nowTicks - s_lastDwmSync >= 1000) {
+            s_lastDwmSync = nowTicks;
+            bool dwmTweaksOn = g_edgeToEdge.load() || g_squareSidebarCorners.load() ||
+                               (g_cfg.windowMaterial != L"default" &&
+                                g_cfg.windowMaterial != L"none");
+            if (dwmTweaksOn || s_dwmTweaksWereApplied) {
+                ApplyDwmToProcessWindows();
+                s_dwmTweaksWereApplied = dwmTweaksOn;
+            }
         }
 
         if (configChanged || treeDirty || tabChanged) {

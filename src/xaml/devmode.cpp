@@ -588,6 +588,7 @@ void ToggleCurrentTabDevMode() {
         return;
     }
 
+    bool nowOn = false;
     {
         std::lock_guard<std::mutex> lock(g_lock);
         bool currentlyOn = false;
@@ -598,6 +599,7 @@ void ToggleCurrentTabDevMode() {
         } else if (g_sites.count(page.origin) || (g_localhost && IsLocalhost(page.origin))) {
             currentlyOn = true;
         }
+        nowOn = !currentlyOn;
 
         if (currentlyOn) {
             if (!page.targetId.empty() && page.targetId != L"page") {
@@ -634,7 +636,16 @@ void ToggleCurrentTabDevMode() {
         g_page = page;
     }
 
-    UpdateToolbar();
+    // The latch was set while the tab *was* in dev mode. Clear it so the menu
+    // checkmark and the toolbar follow the click immediately instead of waiting
+    // out the grace period.
+    g_devActiveUntil.store(0);
+    if (nowOn) {
+        g_devActiveUntil.store(GetTickCount64() + kDevActiveLatchMs);
+        ShowToolbar();
+    } else {
+        HideToolbar();
+    }
     MarkSidebarTab();
 }
 
@@ -948,6 +959,9 @@ bool AddToggleToMenu(ItemVector& items, const wchar_t* name, const std::wstring&
 
 void UpdateMenus() {
     if (IsNewTabPage()) return;
+    // Nothing to do unless a flyout is actually open; scanning the whole tree
+    // every tick was a constant cost even with no menu on screen.
+    if (!Engine_HasOpenMenu()) return;
     Engine_ForEachNode([](const NodeRef& node) {
         if (node.type != L"Microsoft.UI.Xaml.Controls.MenuFlyoutPresenter") return;
 
@@ -3327,7 +3341,7 @@ mux::FrameworkElement g_toolbarKeep{nullptr};
 // reload, title rewrite, slow CDP) cannot restore Dia's hover-only toolbar
 // opacity and make the icons blink out while the pointer is away.
 std::atomic<ULONGLONG> g_toolbarHideAt{0};
-constexpr unsigned long long kToolbarHideDelayMs = 1500;
+constexpr unsigned long long kToolbarHideDelayMs = 900;
 muxm::Brush g_toolbarStripes{nullptr};
 winrt::weak_ref<muxc::Border> g_toolbarBar;
 bool g_toolbarLight = false;
@@ -3335,6 +3349,16 @@ bool g_toolbarLightKnown = false;
 InstanceHandle g_toolbarHostHandle = 0;
 double g_stripeW = 0;
 double g_stripeH = 0;
+
+// ShowToolbar forces the containers above the strip visible and opaque so Dia's
+// hover styling cannot fade the icons out. Remember what they were so hiding
+// the toolbar can put Dia's own visuals back.
+struct ToolbarChainEntry {
+    winrt::weak_ref<mux::FrameworkElement> element;
+    mux::Visibility visibility = mux::Visibility::Visible;
+    double opacity = 1.0;
+};
+std::vector<ToolbarChainEntry> g_toolbarChainEntries;
 
 bool IsEllipsisElement(mux::FrameworkElement fe) {
     if (!fe) return false;
@@ -3524,6 +3548,18 @@ void ShowToolbar() {
                     try {
                         double h = fe.ActualHeight();
                         if (h > 120.0) break;  // reached the window content, stop
+                        mux::Visibility visibility = fe.Visibility();
+                        double opacity = fe.Opacity();
+                        if (visibility != mux::Visibility::Visible || opacity != 1.0) {
+                            bool known = false;
+                            for (auto& entry : g_toolbarChainEntries) {
+                                if (entry.element.get() == fe) { known = true; break; }
+                            }
+                            if (!known) {
+                                g_toolbarChainEntries.push_back(
+                                    ToolbarChainEntry{winrt::make_weak(fe), visibility, opacity});
+                            }
+                        }
                         fe.Visibility(mux::Visibility::Visible);
                         fe.Opacity(1.0);
                     } catch (...) {}
@@ -3587,9 +3623,14 @@ void ShowToolbar() {
         auto repeater = object.try_as<mux::FrameworkElement>();
         if (!repeater) continue;
 
-        g_extensionsWereVisible = repeater.Visibility() == mux::Visibility::Visible;
+        // Capture Dia's own visibility only the first time we hide it; later
+        // ticks would read back our own Collapsed value and "restore" that.
+        auto previous = g_extensionsRepeater.get();
+        if (previous != repeater) {
+            g_extensionsWereVisible = repeater.Visibility() == mux::Visibility::Visible;
+            g_extensionsRepeater = winrt::make_weak(repeater);
+        }
         repeater.Visibility(mux::Visibility::Collapsed);
-        g_extensionsRepeater = winrt::make_weak(repeater);
     }
 
     for (auto handle : Engine_FindNodes(L"AssistantBar")) {
@@ -3635,7 +3676,20 @@ void ShowToolbar() {
 
 void HideToolbar() {
     if (!g_toolbar.get() && !g_toolbarKeep && !g_toolbarPanel.get() && !g_toolbarBar.get() &&
-        g_hiddenToolbarElements.empty() && !g_toolbarHost.get()) return;
+        g_hiddenToolbarElements.empty() && !g_toolbarHost.get() && g_toolbarChainEntries.empty()) return;
+
+    // Remove the strip from wherever it currently lives. The cached panel can
+    // be stale because Dia rebuilds its toolbar on hover, and a strip that is
+    // left parented somewhere is exactly the icon row that refuses to go away.
+    if (auto strip = g_toolbarKeep) {
+        try {
+            if (auto parent = muxm::VisualTreeHelper::GetParent(strip).try_as<muxc::Panel>()) {
+                for (int i = static_cast<int>(parent.Children().Size()) - 1; i >= 0; --i) {
+                    if (parent.Children().GetAt(i) == strip) parent.Children().RemoveAt(i);
+                }
+            }
+        } catch (...) {}
+    }
     if (auto panel = g_toolbarPanel.get()) {
         for (int i = static_cast<int>(panel.Children().Size()) - 1; i >= 0; --i) {
             if (auto child = panel.Children().GetAt(i).try_as<mux::FrameworkElement>()) {
@@ -3669,31 +3723,49 @@ void HideToolbar() {
         } catch (...) {}
     }
 
+    // If ShowToolbar had to replace the host's content, put the original back.
+    if (g_toolbarHostContent) {
+        if (auto host = g_toolbarHost.get()) {
+            try { host.Content(g_toolbarHostContent); } catch (...) {}
+        }
+    }
+
     g_toolbarHost = nullptr;
     g_toolbarHostContent = nullptr;
     g_toolbarHostHandle = 0;
     g_toolbar = nullptr;
     g_toolbarKeep = nullptr;
     g_toolbarLightKnown = false;
+    g_toolbarHideAt.store(0);
 
-    if (IsNewTabPage()) {
-        g_hiddenToolbarElements.clear();
+    if (auto repeater = g_extensionsRepeater.get()) {
+        try {
+            repeater.Visibility(g_extensionsWereVisible ? mux::Visibility::Visible
+                                                        : mux::Visibility::Collapsed);
+        } catch (...) {}
         g_extensionsRepeater = nullptr;
-    } else {
-        if (auto repeater = g_extensionsRepeater.get()) {
-            repeater.Visibility(mux::Visibility::Visible);
-            g_extensionsRepeater = nullptr;
-        }
-
-        for (auto& weak : g_hiddenToolbarElements) {
-            if (auto el = weak.get()) {
-                try {
-                    el.Visibility(mux::Visibility::Visible);
-                } catch (...) {}
-            }
-        }
-        g_hiddenToolbarElements.clear();
     }
+    g_extensionsWereVisible = false;
+
+    for (auto& weak : g_hiddenToolbarElements) {
+        if (auto el = weak.get()) {
+            try {
+                el.Visibility(mux::Visibility::Visible);
+            } catch (...) {}
+        }
+    }
+    g_hiddenToolbarElements.clear();
+
+    // Hand the hover containers back to Dia's own visual states.
+    for (auto& entry : g_toolbarChainEntries) {
+        if (auto el = entry.element.get()) {
+            try {
+                el.Visibility(entry.visibility);
+                el.Opacity(entry.opacity);
+            } catch (...) {}
+        }
+    }
+    g_toolbarChainEntries.clear();
 
     if (auto bar = g_toolbarBar.get()) {
         if (g_toolbarBarBackground) {
@@ -3727,15 +3799,34 @@ void HideToolbar() {
 }
 
 void UpdateToolbar() {
-    // Only ever add/refresh the toolbar here. Never tear it down from a state
-    // reading: the page tracker can momentarily say "not in dev mode" while the
-    // user is still on a dev tab, and tearing down restores Dia's hover-only
-    // opacity (icons and stripes vanish until the next hover). Teardown happens
-    // on definite events instead: a real tab switch, the New Tab page, or the
-    // tweak being switched off (see Tick and SetEnabled).
+    // Adding/refreshing the toolbar happens whenever the active tab is in dev
+    // mode. Teardown is intentionally delayed by a short grace period: the page
+    // tracker can momentarily say "not in dev mode" while the user is still on
+    // a dev tab, and tearing down restores Dia's hover-only opacity (the icons
+    // vanish off-hover). Definite events (a real tab switch or New Tab) hide it
+    // immediately in Tick/ToggleCurrentTabDevMode.
     if (ActiveTabInDevMode()) {
         g_toolbarHideAt.store(0);
         ShowToolbar();
+        return;
+    }
+
+    bool present = g_toolbarKeep || g_toolbar.get() || g_toolbarHost.get() ||
+                   !g_hiddenToolbarElements.empty() || !g_toolbarChainEntries.empty();
+    if (!present) {
+        g_toolbarHideAt.store(0);
+        return;
+    }
+
+    ULONGLONG now = GetTickCount64();
+    ULONGLONG hideAt = g_toolbarHideAt.load();
+    if (hideAt == 0) {
+        g_toolbarHideAt.store(now + kToolbarHideDelayMs);
+        return;
+    }
+    if (now >= hideAt) {
+        g_toolbarHideAt.store(0);
+        HideToolbar();
     }
 }
 
@@ -3786,16 +3877,20 @@ void StopWorker() {
 }  // namespace
 
 void SetEnabled(bool enabled) {
+    bool changed = false;
     {
         std::lock_guard<std::mutex> lock(g_lock);
-        if (g_enabled == enabled) return;
+        changed = (g_enabled != enabled);
         g_enabled = enabled;
     }
     if (enabled) {
+        if (!changed) return;
         LoadSites();
         StartWorker();
     } else {
-        StopWorker();
+        if (changed) StopWorker();
+        // Run the teardown even when the flag was already off: the toolbar can
+        // be left behind by a stale host, and off must always mean off.
         ClearMark();
         HideToolbar();
     }
@@ -3885,8 +3980,11 @@ void Tick() {
         return key;
     };
     static std::wstring s_lastTabTitleKey;
+    static bool s_haveLastTabTitle = false;
     std::wstring tabKey = titleKey(tabTitle);
-    if (!tabKey.empty() && tabKey != s_lastTabTitleKey) {
+    // The very first title is not a tab switch. Treating it as one made the
+    // developer UI hide itself for the grace period right after attaching.
+    if (s_haveLastTabTitle && !tabKey.empty() && tabKey != s_lastTabTitleKey) {
         {
             std::lock_guard<std::mutex> lock(g_lock);
             g_page.url.clear();
@@ -3906,7 +4004,10 @@ void Tick() {
         Log("developer mode: tab switched to %ls, holding the developer UI back until the page tracker catches up",
             tabTitle.c_str());
     }
-    if (!tabKey.empty()) s_lastTabTitleKey = tabKey;
+    if (!tabKey.empty()) {
+        s_lastTabTitleKey = tabKey;
+        s_haveLastTabTitle = true;
+    }
 
     std::wstring addr = NormalizeUrl(GetAddressBarUrl());
     if (GetTickCount64() >= g_pageStaleUntil.load() &&

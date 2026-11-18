@@ -57,6 +57,11 @@ $script:XamlKeys = @(
 )
 $script:XamlInjected = @{}
 $script:Manifest = $null
+# The watch loop calls Invoke-Apply every couple of seconds. These caches keep
+# the expensive one-time syncs (process scans, disk walks) out of that hot path.
+$script:AgentKnownRunning = $false
+$script:LastAgentCheck = [datetime]::MinValue
+$script:LastWatcherCheck = [datetime]::MinValue
 
 # DiaTweaks' own names are keys or titles, matched ignoring case, spaces and
 # punctuation. "Square window corners" and squareSidebarCorners both work.
@@ -327,12 +332,51 @@ function Start-Agent {
 function Stop-Agent {
     $processes = Get-AgentProcesses
     foreach ($process in $processes) {
+        # Never take down the PowerShell process that is running this apply
+        # (a watcher started from a shell could otherwise kill itself).
+        if ($process.Id -eq $PID) { continue }
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
 }
 
+<#
+.SYNOPSIS
+    Small marker files recording work that only needs doing when a setting
+    changes, so `watch` does not repeat it every two seconds.
+#>
+function Read-AppliedMarker {
+    param([Parameter(Mandatory)][string]$Name)
+    $path = Join-Path $script:StateDir $Name
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try {
+        return ([System.IO.File]::ReadAllText($path)).Trim()
+    } catch {
+        return $null
+    }
+}
+
+function Write-AppliedMarker {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Value
+    )
+    try {
+        New-Item -ItemType Directory -Force -Path $script:StateDir | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $script:StateDir $Name), $Value)
+    } catch {}
+}
+
 function Sync-NormalLaunch {
     param([bool]$Enabled)
+    $want = if ($Enabled) { 'on' } else { 'off' }
+    $applied = Read-AppliedMarker 'normalLaunch.applied'
+    if ($applied -eq $want) {
+        if (-not $Enabled) { return }
+        # The shortcut and watcher are already in place. Only look for a dead
+        # watcher occasionally: the process scan is far too costly per tick.
+        if (((Get-Date) - $script:LastWatcherCheck).TotalSeconds -lt 60) { return }
+    }
+
     $startupDir = [Environment]::GetFolderPath('Startup')
     $lnkPath = Join-Path $startupDir 'DiaTweaks.lnk'
     if ($Enabled) {
@@ -353,13 +397,21 @@ function Sync-NormalLaunch {
                 $sc.Save()
             }
         } catch {}
-        $watchProcesses = @(Get-AgentProcesses | Where-Object {
+
+        # One pass over the process list, not one CIM query per candidate.
+        $watcherRunning = @(Get-Process -Name 'diatweaks-agent' -ErrorAction SilentlyContinue).Count -gt 0
+        if (-not $watcherRunning) {
             try {
-                $cmd = (Get-CimInstance Win32_Process -Filter "ProcessId = $($_.Id)" -ErrorAction Stop).CommandLine
-                $cmd -match '-Watch|--watch'
-            } catch { $false }
-        })
-        if ($watchProcesses.Count -eq 0) {
+                $watcherRunning = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction Stop | Where-Object {
+                    $_.CommandLine -and $_.CommandLine -like '*diatweaks-agent.ps1*' -and
+                    $_.CommandLine -match '(-Watch|--watch)'
+                }).Count -gt 0
+            } catch {
+                $watcherRunning = $false
+            }
+        }
+
+        if (-not $watcherRunning) {
             if (Test-Path -LiteralPath $script:AgentScriptPath) {
                 Start-Process -FilePath 'powershell.exe' `
                     -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:AgentScriptPath`" -Watch" `
@@ -371,21 +423,31 @@ function Sync-NormalLaunch {
                     -WindowStyle Hidden | Out-Null
             }
         }
+        $script:LastWatcherCheck = Get-Date
+        Write-AppliedMarker 'normalLaunch.applied' $want
     } else {
         if (Test-Path -LiteralPath $lnkPath) {
             Remove-Item -LiteralPath $lnkPath -Force -ErrorAction SilentlyContinue
         }
+        Write-AppliedMarker 'normalLaunch.applied' $want
     }
 }
 
 function Sync-SegoeUiVariable {
     param([bool]$Enabled)
+    $want = if ($Enabled) { 'on' } else { 'off' }
+    # This walks Dia's whole profile and rewrites files. Only do it when the
+    # setting actually changed; running it from the watch loop churned every
+    # Preference file twice a second.
+    if ((Read-AppliedMarker 'segoeUiVariable.applied') -eq $want) { return }
+
     $base = Join-Path $env:LOCALAPPDATA 'Packages'
     $diaPkg = Get-ChildItem -LiteralPath $base -Directory -Filter '*TheBrowserCompany.Dia*' -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $diaPkg) { return }
     $userData = Join-Path $diaPkg.FullName 'LocalCache\Local\Dia\User Data'
     if (-not (Test-Path -LiteralPath $userData)) { return }
 
+    $desired = "Segoe UI Variable"
     $prefFiles = @(Get-ChildItem -LiteralPath $userData -Filter "Preferences" -Recurse -File -ErrorAction SilentlyContinue)
     foreach ($file in $prefFiles) {
         if ($file.FullName -like "*Extensions*") { continue }
@@ -396,20 +458,31 @@ function Sync-SegoeUiVariable {
             if (-not $json.webkit.webprefs.fonts) { $json.webkit.webprefs | Add-Member -MemberType NoteProperty -Name 'fonts' -Value ([pscustomobject]@{}) }
             if (-not $json.webkit.webprefs.fonts.sansserif) { $json.webkit.webprefs.fonts | Add-Member -MemberType NoteProperty -Name 'sansserif' -Value ([pscustomobject]@{}) }
             if (-not $json.webkit.webprefs.fonts.standard) { $json.webkit.webprefs.fonts | Add-Member -MemberType NoteProperty -Name 'standard' -Value ([pscustomobject]@{}) }
-            
+
+            $changed = $false
             if ($Enabled) {
-                $json.webkit.webprefs.fonts.sansserif.Zyyy = "Segoe UI Variable"
-                $json.webkit.webprefs.fonts.standard.Zyyy = "Segoe UI Variable"
+                if ($json.webkit.webprefs.fonts.sansserif.Zyyy -ne $desired) {
+                    $json.webkit.webprefs.fonts.sansserif.Zyyy = $desired
+                    $changed = $true
+                }
+                if ($json.webkit.webprefs.fonts.standard.Zyyy -ne $desired) {
+                    $json.webkit.webprefs.fonts.standard.Zyyy = $desired
+                    $changed = $true
+                }
             } else {
                 if ($json.webkit.webprefs.fonts.sansserif.Zyyy -in "Segoe UI Variable", "Segoe UI Variable Text") {
                     $json.webkit.webprefs.fonts.sansserif.Zyyy = ""
+                    $changed = $true
                 }
                 if ($json.webkit.webprefs.fonts.standard.Zyyy -in "Segoe UI Variable", "Segoe UI Variable Text") {
                     $json.webkit.webprefs.fonts.standard.Zyyy = ""
+                    $changed = $true
                 }
             }
-            $out = ($json | ConvertTo-Json -Depth 32)
-            [System.IO.File]::WriteAllText($file.FullName, $out, [System.Text.UTF8Encoding]::new($false))
+            if ($changed) {
+                $out = ($json | ConvertTo-Json -Depth 32)
+                [System.IO.File]::WriteAllText($file.FullName, $out, [System.Text.UTF8Encoding]::new($false))
+            }
         } catch {}
     }
 
@@ -431,6 +504,8 @@ function Sync-SegoeUiVariable {
             }
         } catch {}
     }
+
+    Write-AppliedMarker 'segoeUiVariable.applied' $want
 }
 
 # --- The XAML tweaks -------------------------------------------------------
@@ -455,7 +530,18 @@ function Write-XamlConfig {
     $repoChangelog = Join-Path $script:DiaTweaksRoot 'changelog.json'
     $stateChangelog = Join-Path $script:StateDir 'changelog.json'
     if (Test-Path -LiteralPath $repoChangelog) {
-        Copy-Item -LiteralPath $repoChangelog -Destination $stateChangelog -Force -ErrorAction SilentlyContinue
+        $needsCopy = -not (Test-Path -LiteralPath $stateChangelog)
+        if (-not $needsCopy) {
+            try {
+                $needsCopy = (Get-Item -LiteralPath $repoChangelog).LastWriteTimeUtc -gt
+                    (Get-Item -LiteralPath $stateChangelog).LastWriteTimeUtc
+            } catch {
+                $needsCopy = $true
+            }
+        }
+        if ($needsCopy) {
+            Copy-Item -LiteralPath $repoChangelog -Destination $stateChangelog -Force -ErrorAction SilentlyContinue
+        }
     }
 
     $lines = @('[tweaks]')
@@ -522,7 +608,32 @@ function Write-XamlConfig {
     }
 
     $text = ($lines -join "`n") + "`n" + $existingEmojis
-    [System.IO.File]::WriteAllText($configPath, $text, [System.Text.Encoding]::Unicode)
+    # The helper polls this file. Rewriting it on every watch tick made Dia see
+    # a half-written INI for a moment; only replace it when the text changed,
+    # and swap it into place atomically.
+    $current = $null
+    if (Test-Path -LiteralPath $configPath) {
+        try { $current = [System.IO.File]::ReadAllText($configPath, [System.Text.Encoding]::Unicode) } catch {}
+    }
+    if ($current -ne $text) {
+        $tempPath = "$configPath.tmp"
+        [System.IO.File]::WriteAllText($tempPath, $text, [System.Text.Encoding]::Unicode)
+        Move-Item -LiteralPath $tempPath -Destination $configPath -Force
+    }
+}
+
+<#
+.SYNOPSIS
+    Makes sure the XAML helper is loaded in Dia and its config is current.
+#>
+function Test-XamlModuleLoaded {
+    param([Parameter(Mandatory)][int]$ProcessId)
+    try {
+        $process = Get-Process -Id $ProcessId -ErrorAction Stop
+        return @($process.Modules | Where-Object { $_.ModuleName -eq 'diatweaks-xaml.dll' }).Count -gt 0
+    } catch {
+        return $false
+    }
 }
 
 <#
@@ -551,6 +662,14 @@ function Invoke-XamlApply {
             Loaded  = $false
             Message = "The XAML tweaks need bin\diatweaks-xaml.dll. Run scripts\build.ps1."
         }
+    }
+
+    # Another invocation (or the launch watcher) may already have loaded the
+    # helper. Checking the module list costs far less than re-injecting, and it
+    # keeps `apply` snappy in a fresh PowerShell process.
+    if (-not $alreadyLoaded -and (Test-XamlModuleLoaded -ProcessId $processId)) {
+        $alreadyLoaded = $true
+        $script:XamlInjected[$cacheKey] = $true
     }
     if ($alreadyLoaded) {
         return [pscustomobject]@{ Active = $xamlActive; Loaded = $true; Message = $null }
@@ -585,7 +704,7 @@ function Invoke-XamlApply {
 
     $script:XamlInjected[$cacheKey] = $true
     # Give the first timer round time to find Dia's XAML tree and apply.
-    Start-Sleep -Milliseconds 900
+    Start-Sleep -Milliseconds 450
     return [pscustomobject]@{ Active = $xamlActive; Loaded = $true; Message = $null }
 }
 
@@ -644,15 +763,30 @@ function Invoke-Apply {
     $agentBuilt = Test-AgentBuilt
     $agentRunning = $false
 
+    # Looking for the helper means a WMI process scan. In a watching loop that
+    # used to happen twice a second; check only when the answer can have
+    # changed, or every so often in case the helper died.
+    $now = Get-Date
     if ($keepAwake -and $windows.Count -gt 0) {
         if ($agentBuilt) {
-            [void](Start-Agent)
             $agentRunning = $true
+            $due = -not $script:AgentKnownRunning -or
+                ($now - $script:LastAgentCheck).TotalSeconds -ge 30
+            if ($due) {
+                $script:LastAgentCheck = $now
+                [void](Start-Agent)
+                $script:AgentKnownRunning = $true
+            }
         } else {
             $warnings.Add("Keep the display awake is on, but the helper isn't built. Run scripts\build.ps1.")
         }
     } else {
-        Stop-Agent
+        $due = $script:AgentKnownRunning -or ($now - $script:LastAgentCheck).TotalSeconds -ge 15
+        if ($due) {
+            $script:LastAgentCheck = $now
+            Stop-Agent
+            $script:AgentKnownRunning = $false
+        }
     }
 
     $xaml = Invoke-XamlApply -State $state

@@ -13,7 +13,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <string>
-#include <set>
 #include <dwmapi.h>
 
 #pragma comment(lib, "dwmapi.lib")
@@ -57,29 +56,6 @@ std::wstring GetAgentDir() {
     return buf;
 }
 
-static bool g_newDiaEvent = false;
-static std::set<DWORD> g_seenPids;
-
-static void CALLBACK OnWindowCreated(HWINEVENTHOOK, DWORD, HWND hwnd, LONG idObject, LONG idChild, DWORD, DWORD) {
-    if (!hwnd || idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (!pid || g_seenPids.count(pid)) return;
-
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (hProcess) {
-        wchar_t exePath[MAX_PATH]{};
-        DWORD sz = MAX_PATH;
-        if (QueryFullProcessImageNameW(hProcess, 0, exePath, &sz)) {
-            const wchar_t* fn = wcsrchr(exePath, L'\\');
-            if (fn && _wcsicmp(fn + 1, kProcessName) == 0) {
-                g_newDiaEvent = true;
-            }
-        }
-        CloseHandle(hProcess);
-    }
-}
-
 void InjectDia(DWORD pid) {
     std::wstring dir = GetAgentDir();
     std::wstring injector = dir + L"\\diatweaks-inject.exe";
@@ -102,48 +78,109 @@ void InjectDia(DWORD pid) {
     }
 }
 
+bool IsXamlDllLoaded(DWORD pid) {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+    if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+    MODULEENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    bool loaded = false;
+    if (Module32FirstW(snapshot, &entry)) {
+        do {
+            if (_wcsicmp(entry.szModule, L"diatweaks-xaml.dll") == 0) {
+                loaded = true;
+                break;
+            }
+        } while (Module32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return loaded;
+}
+
+bool IsDiaProcess(DWORD pid) {
+    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!hProcess) return false;
+    wchar_t exePath[MAX_PATH]{};
+    DWORD size = MAX_PATH;
+    bool isDia = false;
+    if (QueryFullProcessImageNameW(hProcess, 0, exePath, &size)) {
+        const wchar_t* file = wcsrchr(exePath, L'\\');
+        isDia = file && _wcsicmp(file + 1, kProcessName) == 0;
+    }
+    CloseHandle(hProcess);
+    return isDia;
+}
+
+struct Candidate {
+    DWORD pid = 0;
+    bool ownsMainWindow = false;
+};
+
+static BOOL CALLBACK FindMainWindow(HWND hwnd, LPARAM param) {
+    if (!IsWindowVisible(hwnd)) return TRUE;
+    wchar_t cls[128]{};
+    if (!GetClassNameW(hwnd, cls, 128) || wcscmp(cls, L"WinUIDesktopWin32WindowClass") != 0) return TRUE;
+    RECT rc{};
+    if (!GetClientRect(hwnd, &rc)) return TRUE;
+    if (rc.right - rc.left < 400 || rc.bottom - rc.top < 300) return TRUE;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (!pid || !IsDiaProcess(pid)) return TRUE;
+    *reinterpret_cast<Candidate*>(param) = Candidate{pid, true};
+    return FALSE;
+}
+
+// Dia's browser process: the one that owns the XAML window once it exists.
+// Before the window appears the browser is the oldest Dia process.
+DWORD FindDiaBrowserProcess() {
+    Candidate windowCandidate;
+    EnumWindows(FindMainWindow, reinterpret_cast<LPARAM>(&windowCandidate));
+    if (windowCandidate.pid) return windowCandidate.pid;
+
+    DWORD oldestPid = 0;
+    ULONGLONG oldestStart = 0;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+
+    PROCESSENTRY32W entry{};
+    entry.dwSize = sizeof(entry);
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (_wcsicmp(entry.szExeFile, kProcessName) != 0) continue;
+            HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID);
+            if (!hProcess) continue;
+            FILETIME created{}, exited{}, kernel{}, user{};
+            if (GetProcessTimes(hProcess, &created, &exited, &kernel, &user)) {
+                ULONGLONG start = (static_cast<ULONGLONG>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+                if (!oldestPid || start < oldestStart) {
+                    oldestPid = entry.th32ProcessID;
+                    oldestStart = start;
+                }
+            }
+            CloseHandle(hProcess);
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return oldestPid;
+}
+
 int RunWatch() {
     HANDLE mutex = CreateMutexW(nullptr, FALSE, kWatchMutexName);
     if (mutex == nullptr || GetLastError() == ERROR_ALREADY_EXISTS) {
         return 0; // Already running
     }
 
-    HWINEVENTHOOK hook = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_CREATE, nullptr, OnWindowCreated, 0, 0,
-                                         WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-
-    DWORD lastHandledPid = 0;
     for (;;) {
-        MSG msg;
-        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+        DWORD pid = FindDiaBrowserProcess();
+        if (pid && !IsXamlDllLoaded(pid)) {
+            // Retrying is safe: LoadLibraryW on a loaded DLL does nothing, and
+            // Dia's XAML endpoint may not be listening the first time.
+            Sleep(250);
+            InjectDia(pid);
         }
-
-        // Check if Dia is running
-        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snapshot != INVALID_HANDLE_VALUE) {
-            PROCESSENTRY32W entry{};
-            entry.dwSize = sizeof(entry);
-            if (Process32FirstW(snapshot, &entry)) {
-                do {
-                    if (_wcsicmp(entry.szExeFile, kProcessName) == 0) {
-                        if (entry.th32ProcessID != lastHandledPid && !g_seenPids.count(entry.th32ProcessID)) {
-                            g_seenPids.insert(entry.th32ProcessID);
-                            lastHandledPid = entry.th32ProcessID;
-                            Sleep(600); // Give Dia's window a moment to construct its XAML tree
-                            InjectDia(entry.th32ProcessID);
-                        }
-                    }
-                } while (Process32NextW(snapshot, &entry));
-            }
-            CloseHandle(snapshot);
-        }
-
-        if (g_seenPids.size() > 500) g_seenPids.clear();
         Sleep(1500);
     }
 
-    if (hook) UnhookWinEvent(hook);
     CloseHandle(mutex);
     return 0;
 }
