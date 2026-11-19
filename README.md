@@ -1,6 +1,6 @@
 # DiaTweaks (Dia Tune-ups) for Windows
 
-[![Version 1.1.4](https://img.shields.io/badge/version-1.1.4-blue.svg)](https://github.com/jinanshm/DiaTune-ups/releases)
+[![Version 1.1.5](https://img.shields.io/badge/version-1.1.5-blue.svg)](https://github.com/jinanshm/DiaTune-ups/releases)
 [![Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078d4.svg)](https://microsoft.com/windows)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support%20Developer-orange.svg)](https://buymeacoffee.com/jinansh_)
 
@@ -10,11 +10,12 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ---
 
-## What's New in Version 1.1.4
+## What's New in Version 1.1.5
 
-- **Profile emojis stay in the sidebar**: With the sidebar closed and tabs at the top, the custom emoji row no longer appears in the title bar; Dia's native space switcher keeps its default behaviour.
-- **Yellow-on-black developer tab mark**: The active developer tab now has a solid black ring with yellow dashes on top, matching the yellow-and-black dashed outline.
-- **Everything from 1.1.3**: Reliable patching however Dia opens, instant Developer Mode teardown, faster background patching, and frame tweaks that survive redraws.
+- **Patching at sign-in actually runs**: The background watcher (`diatweaks-watch.exe`) and loader (`diatweaks-loader.exe`) use new file names because security software on some PCs was silently blocking the old ones. That block is why Dia was often not patched, and why a stray console window could appear late at startup.
+- **No console window**: The watcher is a windowless helper, so nothing pops up or stays open after sign-in. The sign-in shortcut is repaired automatically on the next apply.
+- **Developer tab mark in the top tab layout**: The yellow-on-black dashed outline now also appears when tabs are shown at the top, not just in the sidebar.
+- **Everything from 1.1.4**: Profile emojis stay in the sidebar, and the developer tab mark keeps its yellow dashes on black.
 
 ---
 
@@ -22,7 +23,7 @@ Dia on Windows is built with WinUI 3 XAML. DiaTweaks applies tweaks at runtime t
 
 ### Install from a release (recommended)
 
-1. Download `DiaTuneups-Windows-v1.1.4.zip` from the [Releases page](https://github.com/jinanshm/DiaTune-ups/releases).
+1. Download `DiaTuneups-Windows-v1.1.5.zip` from the [Releases page](https://github.com/jinanshm/DiaTune-ups/releases).
 2. Extract it to a folder of your choice, for example `C:\DiaTuneups`.
 3. Double-click `diatweaks.vbs` in that folder to apply the tweaks, or use a shortcut to `wscript.exe "C:\DiaTuneups\diatweaks.vbs" launch` to open Dia and apply them without a console window.
 4. To update later, open Dia's Settings, go to the Tune-ups tab, and click **Update Tune-ups**.
@@ -187,7 +188,7 @@ diatweaks <command> [tweak...] [-y]
 
 ## Building from Source
 
-To build all three binaries (`diatweaks-agent.exe`, `diatweaks-xaml.dll`, `diatweaks-inject.exe`):
+To build all three binaries (`diatweaks-watch.exe`, `diatweaks-xaml.dll`, `diatweaks-loader.exe`):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
@@ -195,8 +196,8 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 
 The compiled binaries are placed into `bin\`:
 - `bin\diatweaks-xaml.dll`: Live WinUI 3 XAML helper DLL.
-- `bin\diatweaks-agent.exe`: Thread execution state / keep-awake agent.
-- `bin\diatweaks-inject.exe`: Low-overhead injector for Dia's browser process.
+- `bin\diatweaks-watch.exe`: Windowless watcher that keeps Dia patched and the display awake.
+- `bin\diatweaks-loader.exe`: Low-overhead injector for Dia's browser process.
 
 ---
 

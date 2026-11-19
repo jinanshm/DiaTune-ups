@@ -73,9 +73,15 @@ if ($Watch) {
                         Start-Sleep -Milliseconds 250
                         if (Get-Command 'Invoke-DiaTweaksInjection' -ErrorAction SilentlyContinue) {
                             Invoke-DiaTweaksInjection -ProcessId $target.Id -DllPath $dllPath | Out-Null
-                        } elseif (Test-Path -LiteralPath (Join-Path $binDir 'diatweaks-inject.exe')) {
-                            $env:SEE_MASK_NOZONECHECKS = '1'
-                            & (Join-Path $binDir 'diatweaks-inject.exe') $target.Id $dllPath 2>&1 | Out-Null
+                        } else {
+                            $loader = Join-Path $binDir 'diatweaks-loader.exe'
+                            if (-not (Test-Path -LiteralPath $loader)) {
+                                $loader = Join-Path $binDir 'diatweaks-inject.exe'
+                            }
+                            if (Test-Path -LiteralPath $loader) {
+                                $env:SEE_MASK_NOZONECHECKS = '1'
+                                & $loader $target.Id $dllPath 2>&1 | Out-Null
+                            }
                         }
                     }
                 }

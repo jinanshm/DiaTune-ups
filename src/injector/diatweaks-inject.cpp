@@ -1,4 +1,4 @@
-// diatweaks-inject.exe <pid> <dll-path>
+// diatweaks-loader.exe <pid> <dll-path>
 //
 // Minimal LoadLibraryW injector for diatweaks-xaml.dll.
 #include <windows.h>
@@ -43,7 +43,7 @@ static bool ModuleLoaded(DWORD pid, const wchar_t* dllPath) {
 
 int wmain(int argc, wchar_t** argv) {
     if (argc < 3) {
-        wprintf(L"usage: diatweaks-inject <pid> <dll-path>\n");
+        wprintf(L"usage: diatweaks-loader <pid> <dll-path>\n");
         return 1;
     }
 

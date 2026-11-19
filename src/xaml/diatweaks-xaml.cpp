@@ -7104,13 +7104,13 @@ static std::vector<ChangelogVersion> LoadChangelog() {
 
     auto GetDefaultChangelog = []() -> std::vector<ChangelogVersion> {
         ChangelogVersion v;
-        v.version = L"1.1.4";
-        v.date = L"2026-11-18";
-        v.title = L"Dia Tune-ups v1.1.4";
+        v.version = L"1.1.5";
+        v.date = L"2026-11-19";
+        v.title = L"Dia Tune-ups v1.1.5";
         v.changes = {
-            L"Profile emojis no longer appear in the top tab layout: the custom emoji row is only used while Dia's sidebar is open, and the native switcher stays untouched when it is not.",
-            L"The developer-mode tab mark now draws a solid black ring with yellow dashes on top, matching the yellow-and-black dashed outline.",
-            L"Everything from 1.1.3: reliable patching however Dia opens, instant Developer Mode teardown, faster background patching, and frame tweaks that survive redraws."
+            L"Patching at sign-in works again: the background watcher is now diatweaks-watch.exe and the loader is diatweaks-loader.exe. Security software on some PCs silently blocked the old file names, so the watcher never started and Dia stayed unpatched.",
+            L"No console window: the watcher is a windowless helper, so nothing pops up and stays open after sign-in.",
+            L"Developer-mode tab mark in the top tab layout: the mark now finds tab rows in both the sidebar and the top tab strip, follows the active tab by its centre, and spans the row so the dashed outline surrounds the whole tab."
         };
         return {v};
     };
@@ -7186,13 +7186,13 @@ static std::vector<ChangelogVersion> LoadChangelog() {
             const char defaultJson[] = "{\n"
                 "  \"versions\": [\n"
                 "    {\n"
-                "      \"version\": \"1.1.4\",\n"
-                "      \"date\": \"2026-11-18\",\n"
-                "      \"title\": \"Dia Tune-ups v1.1.4\",\n"
+                "      \"version\": \"1.1.5\",\n"
+                "      \"date\": \"2026-11-19\",\n"
+                "      \"title\": \"Dia Tune-ups v1.1.5\",\n"
                 "      \"changes\": [\n"
-                "        \"Profile emojis no longer appear in the top tab layout: the custom emoji row is only used while Dia's sidebar is open, and the native switcher stays untouched when it is not.\",\n"
-                "        \"The developer-mode tab mark now draws a solid black ring with yellow dashes on top, matching the yellow-and-black dashed outline.\",\n"
-                "        \"Everything from 1.1.3: reliable patching however Dia opens, instant Developer Mode teardown, faster background patching, and frame tweaks that survive redraws.\"\n"
+                "        \"Patching at sign-in works again: the background watcher is now diatweaks-watch.exe and the loader is diatweaks-loader.exe. Security software on some PCs silently blocked the old file names, so the watcher never started and Dia stayed unpatched.\",\n"
+                "        \"No console window: the watcher is a windowless helper, so nothing pops up and stays open after sign-in.\",\n"
+                "        \"Developer-mode tab mark in the top tab layout: the mark now finds tab rows in both the sidebar and the top tab strip, follows the active tab by its centre, and spans the row so the dashed outline surrounds the whole tab.\"\n"
                 "      ]\n"
                 "    }\n"
                 "  ]\n"
@@ -7439,7 +7439,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Update Dia Tune-ups");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"Version 1.1.4 • One click checks GitHub and installs the newest build.");
+        d.Text(L"Version 1.1.5 • One click checks GitHub and installs the newest build.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);
@@ -7554,7 +7554,7 @@ static mux::FrameworkElement BuildDiaTuneupsSection() {
         title.Text(L"Changelog");
         text.Children().Append(title);
         muxc::TextBlock d;
-        d.Text(L"View what's new in version 1.1.4 and recent changes.");
+        d.Text(L"View what's new in version 1.1.5 and recent changes.");
         d.FontSize(12);
         d.Foreground(BrushRes(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Color{255, 0xc5, 0xc5, 0xc5}));
         text.Children().Append(d);

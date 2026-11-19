@@ -2,6 +2,16 @@
 
 All notable changes to **DiaTweaks (Dia Tune-ups) for Windows** will be documented in this file.
 
+## [1.1.5] - 2026-11-19
+
+### Fixed
+- **Patching at sign-in works again.** The background watcher is now `diatweaks-watch.exe` and the injector is `diatweaks-loader.exe`. On some PCs, security software silently intercepts the old `diatweaks-agent.exe` and `diatweaks-inject.exe` file names, so the watcher exited without running and Dia was never patched. The sign-in shortcut is rewritten to the new helper the next time tweaks are applied.
+- **No console window at sign-in.** The watcher is a windowless helper, so no CMD/PowerShell window pops up and stays open.
+
+### Changed
+- **Developer-mode tab mark appears in the top tab layout.** The mark now finds tab rows in both the sidebar (`RowsPanel`) and the top tab strip (`TabList*` / `TabStrip*`), matches the active tab by its on-screen centre instead of Y only, and spans the row's grid cell so the yellow-on-black dashed outline surrounds the whole tab.
+- **Profile emojis stay in the sidebar** with the same behaviour as 1.1.4: the custom emoji row is used only while Dia's sidebar is open, and the native space switcher is left alone otherwise.
+
 ## [1.1.4] - 2026-11-18
 
 ### Fixed

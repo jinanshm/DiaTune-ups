@@ -7,14 +7,17 @@ if (-not $env:LOCALAPPDATA) {
 }
 $script:StateDir = Join-Path $env:LOCALAPPDATA 'DiaTweaks'
 $script:StatePath = Join-Path $script:StateDir 'state.json'
-$script:AgentPath = Join-Path $script:DiaTweaksRoot 'bin\diatweaks-agent.exe'
+$script:AgentPath = Join-Path $script:DiaTweaksRoot 'bin\diatweaks-watch.exe'
 $script:AgentScriptPath = Join-Path $script:DiaTweaksRoot 'bin\diatweaks-agent.ps1'
 if (-not (Test-Path -LiteralPath $script:AgentScriptPath)) {
     $script:AgentScriptPath = Join-Path $script:DiaTweaksRoot 'cli\lib\agent.ps1'
 }
-$script:AgentName = 'diatweaks-agent'
+$script:AgentName = 'diatweaks-watch'
 $script:XamlDllPath = Join-Path $script:DiaTweaksRoot 'bin\diatweaks-xaml.dll'
-$script:InjectorPath = Join-Path $script:DiaTweaksRoot 'bin\diatweaks-inject.exe'
+$script:InjectorPath = Join-Path $script:DiaTweaksRoot 'bin\diatweaks-loader.exe'
+if (-not (Test-Path -LiteralPath $script:InjectorPath)) {
+    $script:InjectorPath = Join-Path $script:DiaTweaksRoot 'bin\diatweaks-inject.exe'
+}
 $injectorScript = Join-Path $PSScriptRoot 'injector.ps1'
 if (Test-Path -LiteralPath $injectorScript) {
     . $injectorScript
@@ -297,6 +300,9 @@ function Test-AgentBuilt {
 
 function Get-AgentProcesses {
     $list = @(Get-Process -Name $script:AgentName -ErrorAction SilentlyContinue)
+    # The pre-1.1.5 executable is no longer started, but stop treating a
+    # leftover copy as "the watcher is fine" once the new helper is missing.
+    $legacy = @(Get-Process -Name 'diatweaks-agent' -ErrorAction SilentlyContinue)
     $scriptName = 'diatweaks-agent.ps1'
     $psList = @()
     try {
@@ -306,23 +312,42 @@ function Get-AgentProcesses {
             Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue
         })
     } catch {}
-    return @($list + $psList)
+    return @($list + $legacy + $psList)
+}
+
+function Test-AgentRunning {
+    if (@(Get-Process -Name $script:AgentName -ErrorAction SilentlyContinue).Count -gt 0) {
+        return $true
+    }
+    try {
+        return @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction Stop | Where-Object {
+            $_.CommandLine -and $_.CommandLine -like '*diatweaks-agent.ps1*' -and
+            $_.CommandLine -match '(-Watch|--watch)'
+        }).Count -gt 0
+    } catch {
+        return $false
+    }
 }
 
 function Start-Agent {
     if (-not (Test-AgentBuilt)) { return $false }
-    if ((Get-AgentProcesses).Count -gt 0) { return $true }
+    if (Test-AgentRunning) { return $true }
 
-    # The script helper runs without requiring untrusted binary permission approvals
-    if (Test-Path -LiteralPath $script:AgentScriptPath) {
+    # The 1.1.4 helper was a console build under a name that this machine's
+    # security software intercepts; retire it instead of counting it as alive.
+    Get-Process -Name 'diatweaks-agent' -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+
+    # Prefer the windowless native helper; the script is only a fallback.
+    if (Test-Path -LiteralPath $script:AgentPath) {
+        Start-Process -FilePath $script:AgentPath `
+            -WorkingDirectory (Split-Path -Parent $script:AgentPath) `
+            -WindowStyle Hidden | Out-Null
+        return $true
+    } elseif (Test-Path -LiteralPath $script:AgentScriptPath) {
         Start-Process -FilePath 'powershell.exe' `
             -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:AgentScriptPath`"" `
             -WorkingDirectory (Split-Path -Parent $script:AgentScriptPath) `
-            -WindowStyle Hidden | Out-Null
-        return $true
-    } elseif (Test-Path -LiteralPath $script:AgentPath) {
-        Start-Process -FilePath $script:AgentPath `
-            -WorkingDirectory (Split-Path -Parent $script:AgentPath) `
             -WindowStyle Hidden | Out-Null
         return $true
     }
@@ -380,46 +405,50 @@ function Sync-NormalLaunch {
     $startupDir = [Environment]::GetFolderPath('Startup')
     $lnkPath = Join-Path $startupDir 'DiaTweaks.lnk'
     if ($Enabled) {
+        # Prefer the native watcher: it is a windowless executable, so neither
+        # sign-in nor a shortcut can flash a console window. The PowerShell
+        # script stays as a fallback for installs without the built exe.
+        $useExe = Test-Path -LiteralPath $script:AgentPath
+        if ($useExe) {
+            $wantTarget = $script:AgentPath
+            $wantArgs = '--watch'
+            $wantDir = Split-Path -Parent $script:AgentPath
+        } else {
+            $wantTarget = 'powershell.exe'
+            $wantArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:AgentScriptPath`" -Watch"
+            $wantDir = Split-Path -Parent $script:AgentScriptPath
+        }
+
         try {
-            if (-not (Test-Path -LiteralPath $lnkPath)) {
+            $needsWrite = -not (Test-Path -LiteralPath $lnkPath)
+            if (-not $needsWrite) {
+                $wsh = New-Object -ComObject WScript.Shell
+                $existing = $wsh.CreateShortcut($lnkPath)
+                $needsWrite =
+                    ($existing.TargetPath -ne $wantTarget) -or
+                    ($existing.Arguments -ne $wantArgs) -or
+                    ($existing.WorkingDirectory -ne $wantDir)
+            }
+            if ($needsWrite) {
                 $wsh = New-Object -ComObject WScript.Shell
                 $sc = $wsh.CreateShortcut($lnkPath)
-                if (Test-Path -LiteralPath $script:AgentScriptPath) {
-                    $sc.TargetPath = 'powershell.exe'
-                    $sc.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:AgentScriptPath`" -Watch"
-                    $sc.WorkingDirectory = Split-Path -Parent $script:AgentScriptPath
-                } else {
-                    $sc.TargetPath = $script:AgentPath
-                    $sc.Arguments = '--watch'
-                    $sc.WorkingDirectory = Split-Path -Parent $script:AgentPath
-                }
+                $sc.TargetPath = $wantTarget
+                $sc.Arguments = $wantArgs
+                $sc.WorkingDirectory = $wantDir
                 $sc.Description = 'Keep DiaTweaks active whenever Dia opens'
                 $sc.Save()
             }
         } catch {}
 
-        # One pass over the process list, not one CIM query per candidate.
-        $watcherRunning = @(Get-Process -Name 'diatweaks-agent' -ErrorAction SilentlyContinue).Count -gt 0
-        if (-not $watcherRunning) {
-            try {
-                $watcherRunning = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction Stop | Where-Object {
-                    $_.CommandLine -and $_.CommandLine -like '*diatweaks-agent.ps1*' -and
-                    $_.CommandLine -match '(-Watch|--watch)'
-                }).Count -gt 0
-            } catch {
-                $watcherRunning = $false
-            }
-        }
-
-        if (-not $watcherRunning) {
-            if (Test-Path -LiteralPath $script:AgentScriptPath) {
+        if (-not (Test-AgentRunning)) {
+            if ($useExe) {
+                Start-Process -FilePath $script:AgentPath -ArgumentList '--watch' `
+                    -WorkingDirectory (Split-Path -Parent $script:AgentPath) `
+                    -WindowStyle Hidden | Out-Null
+            } elseif (Test-Path -LiteralPath $script:AgentScriptPath) {
                 Start-Process -FilePath 'powershell.exe' `
                     -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$script:AgentScriptPath`" -Watch" `
                     -WorkingDirectory (Split-Path -Parent $script:AgentScriptPath) `
-                    -WindowStyle Hidden | Out-Null
-            } elseif (Test-Path -LiteralPath $script:AgentPath) {
-                Start-Process -FilePath $script:AgentPath -ArgumentList '--watch' `
-                    -WorkingDirectory (Split-Path -Parent $script:AgentPath) `
                     -WindowStyle Hidden | Out-Null
             }
         }
@@ -681,7 +710,7 @@ function Invoke-XamlApply {
         $injected = Invoke-DiaTweaksInjection -ProcessId $processId -DllPath $script:XamlDllPath
     }
 
-    # Second: Fallback to diatweaks-inject.exe if in-process injection was not available
+    # Second: Fallback to the native loader if in-process injection was not available
     if (-not $injected -and (Test-Path -LiteralPath $script:InjectorPath)) {
         $env:SEE_MASK_NOZONECHECKS = '1'
         try {

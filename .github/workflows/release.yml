@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release (e.g. v1.1.4)'
+        description: 'Tag name for release (e.g. v1.1.5)'
         required: true
-        default: 'v1.1.4'
+        default: 'v1.1.5'
 
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
           if (-not $ver -or $ver -eq "master") {
             $ver = "${{ github.event.inputs.tag_name }}"
           }
-          if (-not $ver) { $ver = "v1.1.4" }
+          if (-not $ver) { $ver = "v1.1.5" }
           Write-Host "Releasing version: $ver"
           "version=$ver" >> $env:GITHUB_OUTPUT
 
@@ -88,8 +88,8 @@ jobs:
           files: |
             DiaTuneups-Windows-*.zip
             bin/diatweaks-xaml.dll
-            bin/diatweaks-agent.exe
-            bin/diatweaks-inject.exe
+            bin/diatweaks-watch.exe
+            bin/diatweaks-loader.exe
             changelog.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

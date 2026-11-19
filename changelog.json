@@ -1,6 +1,16 @@
 {
   "versions": [
     {
+      "version": "1.1.5",
+      "date": "2026-11-19",
+      "title": "Dia Tune-ups v1.1.5",
+      "changes": [
+        "Patching at sign-in works again: the background watcher is now diatweaks-watch.exe and the loader is diatweaks-loader.exe. Security software on some PCs silently blocked the old file names, so the watcher never started and Dia stayed unpatched. The sign-in shortcut is rewritten automatically on the next apply.",
+        "No console window: the watcher is a windowless helper, so nothing pops up and stays open after sign-in.",
+        "Developer-mode tab mark in the top tab layout: the mark now finds tab rows in both the sidebar and the top tab strip, follows the active tab by its centre, and spans the row so the dashed outline surrounds the whole tab."
+      ]
+    },
+    {
       "version": "1.1.4",
       "date": "2026-11-18",
       "title": "Dia Tune-ups v1.1.4",

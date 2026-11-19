@@ -1,7 +1,7 @@
 # build.ps1 - builds the keep-awake helper.
 #
 # Uses the Visual Studio C++ toolchain when it is installed, and falls back to
-# MinGW's g++ otherwise. The result is bin\diatweaks-agent.exe.
+# MinGW's g++ otherwise. The result is bin\diatweaks-watch.exe.
 
 [CmdletBinding()]
 param(
@@ -14,7 +14,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $source = Join-Path $root 'src\agent\diatweaks-agent.cpp'
 $outDir = Join-Path $root 'bin'
 $objDir = Join-Path $outDir 'obj'
-$exe = Join-Path $outDir 'diatweaks-agent.exe'
+$exe = Join-Path $outDir 'diatweaks-watch.exe'
 
 if (-not (Test-Path -LiteralPath $source)) {
     throw "Missing source: $source"
@@ -23,7 +23,7 @@ if (-not (Test-Path -LiteralPath $source)) {
 New-Item -ItemType Directory -Force -Path $outDir, $objDir | Out-Null
 
 # A running helper locks the old exe on Windows.
-Get-Process -Name 'diatweaks-agent', 'Dia' -ErrorAction SilentlyContinue |
+Get-Process -Name 'diatweaks-watch', 'diatweaks-agent', 'Dia' -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 300
 
@@ -78,13 +78,13 @@ if (-not $SkipAgent) {
             "call `"$vcvars`" >nul",
             'if errorlevel 1 exit /b 1',
             "cd /d `"$objDir`"",
-            "cl /nologo /std:c++17 /O2 /MT /EHsc /DUNICODE /D_UNICODE /Fo`"$objDir/`" /Fe:`"$exe`" `"$source`" user32.lib shell32.lib ole32.lib"
+            "cl /nologo /std:c++17 /O2 /MT /EHsc /DUNICODE /D_UNICODE /DDIA_TWEAKS_WINDOWLESS /Fo`"$objDir/`" /Fe:`"$exe`" `"$source`" /link /SUBSYSTEM:WINDOWS user32.lib shell32.lib ole32.lib"
         )
         [System.IO.File]::WriteAllLines($batch, $lines, [System.Text.UTF8Encoding]::new($false))
 
         & cmd.exe /c $batch
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "diatweaks-agent.exe build failed ($LASTEXITCODE); agent may be running."
+            Write-Warning "diatweaks-watch.exe build failed ($LASTEXITCODE); agent may be running."
         }
     } else {
         $gpp = Get-Command 'g++' -ErrorAction SilentlyContinue
@@ -147,7 +147,7 @@ $historySource = Join-Path $root 'src\xaml\history.cpp'
 $xamlDef = Join-Path $root 'src\xaml\diatweaks-xaml.def'
 $injectSource = Join-Path $root 'src\injector\diatweaks-inject.cpp'
 $dll = Join-Path $outDir 'diatweaks-xaml.dll'
-$injector = Join-Path $outDir 'diatweaks-inject.exe'
+$injector = Join-Path $outDir 'diatweaks-loader.exe'
 
 if (-not $vcvars) {
     Write-Warning 'Visual Studio C++ tools were not found; skipping diatweaks-xaml.dll and the injector.'

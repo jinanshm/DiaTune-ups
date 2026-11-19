@@ -1012,22 +1012,37 @@ struct RowOnScreen {
     bool selected = false;
 };
 
+bool IsTabContainerAncestor(InstanceHandle handle) {
+    InstanceHandle parent = Engine_Parent(handle);
+    for (int i = 0; i < 10 && parent; ++i) {
+        std::wstring name = Engine_Name(parent);
+        if (name == L"RowsPanel") return true;
+        if (name.find(L"TabList") != std::wstring::npos) return true;
+        if (name.find(L"TabStrip") != std::wstring::npos) return true;
+        parent = Engine_Parent(parent);
+    }
+    return false;
+}
+
 std::vector<RowOnScreen> SidebarRows() {
     std::vector<RowOnScreen> rows;
 
-    std::vector<InstanceHandle> candidates;
+    // Dia draws tab rows as UserControls in the sidebar and reuses them in the
+    // top strip. Some builds wrap each row in a ListViewItem/TabViewItem, so
+    // fall back to those when no UserControl row is present.
+    std::vector<InstanceHandle> userControls;
+    std::vector<InstanceHandle> items;
     Engine_ForEachNode([&](const NodeRef& node) {
-        if (node.type != L"Microsoft.UI.Xaml.Controls.UserControl") return;
-
-        InstanceHandle parent = Engine_Parent(node.handle);
-        for (int i = 0; i < 8 && parent; ++i) {
-            if (Engine_Name(parent) == L"RowsPanel") {
-                candidates.push_back(node.handle);
-                return;
-            }
-            parent = Engine_Parent(parent);
-        }
+        bool isUserControl = node.type == L"Microsoft.UI.Xaml.Controls.UserControl";
+        bool isItem = node.type == L"Microsoft.UI.Xaml.Controls.ListViewItem" ||
+                      node.type == L"Microsoft.UI.Xaml.Controls.TabViewItem";
+        if (!isUserControl && !isItem) return;
+        if (!IsTabContainerAncestor(node.handle)) return;
+        (isUserControl ? userControls : items).push_back(node.handle);
     });
+
+    std::vector<InstanceHandle> candidates = userControls;
+    candidates.insert(candidates.end(), items.begin(), items.end());
 
     for (InstanceHandle handle : candidates) {
         IInspectable* raw = Engine_Object(handle);
@@ -1045,6 +1060,18 @@ std::vector<RowOnScreen> SidebarRows() {
 
             auto rect = peer.GetBoundingRectangle();
             if (rect.Width < 40 || rect.Height < 20) continue;
+
+            // Nested row types resolve to the same box; keep the first one.
+            bool duplicate = false;
+            for (const RowOnScreen& existing : rows) {
+                if (std::abs(existing.x - rect.X) < 2 && std::abs(existing.y - rect.Y) < 2 &&
+                    std::abs(existing.width - rect.Width) < 2 &&
+                    std::abs(existing.height - rect.Height) < 2) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate) continue;
 
             RowOnScreen row;
             row.row = element;
@@ -1188,9 +1215,18 @@ void DrawMark(mux::UIElement row) {
                 blackRect.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
                 blackRect.VerticalAlignment(mux::VerticalAlignment::Stretch);
                 blackRect.Margin(mux::Thickness{1, 1, 1, 1});
+                // Top-strip rows host their content in a Grid; spanning every
+                // row/column keeps the outline around the whole tab instead of
+                // one small cell.
+                muxc::Grid::SetRowSpan(blackRect, 99);
+                muxc::Grid::SetColumnSpan(blackRect, 99);
                 panel.Children().Append(blackRect);
             }
             blackRect.Visibility(mux::Visibility::Visible);
+            blackRect.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
+            blackRect.VerticalAlignment(mux::VerticalAlignment::Stretch);
+            muxc::Grid::SetRowSpan(blackRect, 99);
+            muxc::Grid::SetColumnSpan(blackRect, 99);
 
             if (!yellowRect) {
                 yellowRect = muxsh::Rectangle();
@@ -1209,9 +1245,15 @@ void DrawMark(mux::UIElement row) {
                 yellowRect.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
                 yellowRect.VerticalAlignment(mux::VerticalAlignment::Stretch);
                 yellowRect.Margin(mux::Thickness{1, 1, 1, 1});
+                muxc::Grid::SetRowSpan(yellowRect, 99);
+                muxc::Grid::SetColumnSpan(yellowRect, 99);
                 panel.Children().Append(yellowRect);
             }
             yellowRect.Visibility(mux::Visibility::Visible);
+            yellowRect.HorizontalAlignment(mux::HorizontalAlignment::Stretch);
+            yellowRect.VerticalAlignment(mux::VerticalAlignment::Stretch);
+            muxc::Grid::SetRowSpan(yellowRect, 99);
+            muxc::Grid::SetColumnSpan(yellowRect, 99);
             return;
         }
 
@@ -1308,44 +1350,70 @@ void MarkSidebarTab() {
     double selectedX = 0, selectedY = 0, selectedWidth = 0, selectedHeight = 0;
     bool haveSelected = false;
 
-    for (auto handle : Engine_FindNodes(L"RowsPanel")) {
-        IInspectable* raw = Engine_Object(handle);
-        if (!raw) continue;
-        Inspectable object{nullptr};
-        winrt::copy_from_abi(object, raw);
-        raw->Release();
-
-        auto element = object.try_as<mux::UIElement>();
-        if (!element) continue;
-
+    // Prefer the row element's own selection state: it is present in both the
+    // sidebar and the top strip, where the selected row's box is the cleanest
+    // guide to which tab to outline.
+    for (const RowOnScreen& row : rows) {
         try {
-            auto peer = muxa_peers::FrameworkElementAutomationPeer::CreatePeerForElement(element);
+            auto peer = muxa_peers::FrameworkElementAutomationPeer::CreatePeerForElement(row.row);
             if (!peer) continue;
+            auto pattern = peer.GetPattern(muxa_peers::PatternInterface::SelectionItem);
+            if (!pattern) continue;
+            auto provider =
+                pattern.try_as<winrt::Microsoft::UI::Xaml::Automation::Provider::
+                                   ISelectionItemProvider>();
+            if (!provider || !provider.IsSelected()) continue;
 
-            auto children = peer.GetChildren();
-            for (uint32_t i = 0; i < children.Size(); ++i) {
-                auto child = children.GetAt(i);
-                if (!child) continue;
-
-                auto pattern = child.GetPattern(muxa_peers::PatternInterface::SelectionItem);
-                if (!pattern) continue;
-                auto provider =
-                    pattern.try_as<winrt::Microsoft::UI::Xaml::Automation::Provider::
-                                       ISelectionItemProvider>();
-                if (!provider || !provider.IsSelected()) continue;
-
-                auto rect = child.GetBoundingRectangle();
-                if (rect.Width < 40 || rect.Height < 20) continue;
-
-                selectedX = rect.X;
-                selectedY = rect.Y;
-                selectedWidth = rect.Width;
-                selectedHeight = rect.Height;
-                haveSelected = true;
-                break;
-            }
+            selectedX = row.x;
+            selectedY = row.y;
+            selectedWidth = row.width;
+            selectedHeight = row.height;
+            haveSelected = true;
+            break;
         } catch (...) {}
-        if (haveSelected) break;
+    }
+
+    // Sidebar rows expose selection on the children of their automation peer.
+    if (!haveSelected) {
+        for (auto handle : Engine_FindNodes(L"RowsPanel")) {
+            IInspectable* raw = Engine_Object(handle);
+            if (!raw) continue;
+            Inspectable object{nullptr};
+            winrt::copy_from_abi(object, raw);
+            raw->Release();
+
+            auto element = object.try_as<mux::UIElement>();
+            if (!element) continue;
+
+            try {
+                auto peer = muxa_peers::FrameworkElementAutomationPeer::CreatePeerForElement(element);
+                if (!peer) continue;
+
+                auto children = peer.GetChildren();
+                for (uint32_t i = 0; i < children.Size(); ++i) {
+                    auto child = children.GetAt(i);
+                    if (!child) continue;
+
+                    auto pattern = child.GetPattern(muxa_peers::PatternInterface::SelectionItem);
+                    if (!pattern) continue;
+                    auto provider =
+                        pattern.try_as<winrt::Microsoft::UI::Xaml::Automation::Provider::
+                                           ISelectionItemProvider>();
+                    if (!provider || !provider.IsSelected()) continue;
+
+                    auto rect = child.GetBoundingRectangle();
+                    if (rect.Width < 40 || rect.Height < 20) continue;
+
+                    selectedX = rect.X;
+                    selectedY = rect.Y;
+                    selectedWidth = rect.Width;
+                    selectedHeight = rect.Height;
+                    haveSelected = true;
+                    break;
+                }
+            } catch (...) {}
+            if (haveSelected) break;
+        }
     }
 
     std::wstring activeTitle = GetSelectedTabTitle();
@@ -1362,13 +1430,25 @@ void MarkSidebarTab() {
 
     InstanceHandle matchedHandle = 0;
     if (haveSelected) {
+        // Compare centres instead of Y alone: the top strip lays rows out
+        // horizontally, so every row shares nearly the same Y.
+        double selectedCenterX = selectedX + selectedWidth / 2.0;
         double selectedCenterY = selectedY + selectedHeight / 2.0;
+        double bestDistance = 1e18;
         for (const RowOnScreen& row : rows) {
-            if (selectedCenterY >= row.y - 2 && selectedCenterY <= row.y + row.height + 2) {
+            double centerX = row.x + row.width / 2.0;
+            double centerY = row.y + row.height / 2.0;
+            double dx = centerX - selectedCenterX;
+            double dy = centerY - selectedCenterY;
+            double distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
                 matchedHandle = row.handle;
-                break;
             }
         }
+        // A centre match more than 12 px away is a different row (or the
+        // selection box belongs to something else), so fall back to text.
+        if (bestDistance > 12.0 * 12.0) matchedHandle = 0;
     }
 
     // Secondary fallback: match by page title or host if bounding box didn't match

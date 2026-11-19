@@ -166,8 +166,8 @@ foreach ($key in $keys) {
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-agent.ps1')) -and
-    -not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-agent.exe'))) {
-    Write-Warning 'bin\diatweaks-agent.ps1 is not built yet; run scripts\build.ps1.'
+    -not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-watch.exe'))) {
+    Write-Warning 'bin\diatweaks-watch.exe is not built yet; run scripts\build.ps1.'
 }
 if (-not (Test-Path -LiteralPath (Join-Path $root 'bin\diatweaks-xaml.dll'))) {
     Write-Warning 'bin\diatweaks-xaml.dll is not built yet; run scripts\build.ps1.'

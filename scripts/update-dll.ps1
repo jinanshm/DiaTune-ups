@@ -4,7 +4,7 @@ $source = Join-Path $root 'bin\diatweaks-xaml-test.dll'
 $dest = Join-Path $root 'bin\diatweaks-xaml.dll'
 
 Write-Host "Stopping Dia to release file lock..."
-Get-Process -Name 'diatweaks-agent', 'Dia' -ErrorAction SilentlyContinue |
+Get-Process -Name 'diatweaks-watch', 'diatweaks-agent', 'Dia' -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
 
 Start-Sleep -Milliseconds 600
